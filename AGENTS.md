@@ -9,7 +9,7 @@
 
 A plugin-based MCP server framework that protects LLM context windows. Any CLI tool
 can be exposed as an MCP tool — output is cached and accessed through generic
-`paginate` and `search` framework tools instead of dumped into the conversation.
+`view` framework tool instead of dumped into the conversation.
 Output can be post-processed through a pluggable **transform** pipeline.
 
 Zero hard dependencies. Python 3.13+.
@@ -25,10 +25,10 @@ a handle + summary. The LLM then uses framework tools to explore the cached outp
 LLM calls:  git_log(since="1week")
 Returns:    { handle: "git_log_1716000000", lines: 847, preview: "..." }
 
-LLM calls:  search(handle="git_log_1716000000", pattern="auth")
-Returns:    12 matching lines
+LLM calls:  view(handle="git_log_1716000000", _search="auth")
+Returns:    matching lines
 
-LLM calls:  paginate(handle="git_log_1716000000", offset=0, limit=5)
+LLM calls:  view(handle="git_log_1716000000", _offset=0, _limit=5)
 Returns:    first 5 lines
 ```
 
@@ -49,7 +49,7 @@ One tool produces. Generic tools consume. Plugins never implement search or pagi
                               ┌──────┴──────┐   │ @transform   │
                               │  Framework   │   │ search,limit │
                               │  Tools       │   │ offset,head  │
-                              │  - paginate  │   │ tail, ...    │
+                              │  - view      │   │ tail, ...    │
                               │  - search    │   │ (extensible) │
                               └─────────────┘   └─────────────┘
 ```
@@ -59,8 +59,11 @@ One tool produces. Generic tools consume. Plugins never implement search or pagi
 1. **Plugin tools** — domain-specific (git_log, git_diff, docker_ps). Produce output.
    Registered by plugins. Don't know about caching or pagination.
 
-2. **Framework tools** — generic (paginate, search). Consume cached output via handles.
-   Built into mcpipe. Work with any plugin's output. Delegate to the transform registry.
+2. **Framework tools** — generic (view, handles, reload, authoring). Consume cached output
+   or manage mcpipe itself. Built into mcpipe. Work with any plugin's output.
+   `view` loads cached output by handle — meta-params do the filtering.
+   `reload` hot-reloads plugins and transforms from disk without restarting.
+   Authoring tools (write/read/delete plugin/transform) manage user extensions.
 
 ### Transforms — pluggable post-processing
 
@@ -105,43 +108,47 @@ Output caching lives in `cache.py`. Writes to `/tmp/mcpipe/`, manages handles an
 - TTL-based garbage collection cleans up old entries
 
 ### Plugins — domain logic
-- Each plugin is a module under `mcpipe/plugins/` — the module name is the plugin name
+- Each plugin is a module under `mcpipe/plugins/` (built-in) or
+  `$XDG_CONFIG_HOME/mcpipe/plugins/` (user-authored)
 - Plugin name is auto-detected from the module by the `@tool` decorator (no config needed)
 - A plugin declares its tools (name, description, arg schema) and how to execute them
 - A plugin can be a subprocess wrapper (git, docker, kubectl) or pure Python
 - The `list` command groups tools by plugin name
-- Plugins provide **sink hints** — advisory preferences for how their output should be delivered
 
-## Sink Hints
+### User extensions
 
-Plugins hint at their output characteristics. The framework resolves the actual sink:
+User plugins and transforms live in `$XDG_CONFIG_HOME/mcpipe/` (default `~/.config/mcpipe/`):
+- `plugins/*.py` — user-authored plugin files
+- `transforms/*.py` — user-authored transform files
 
-1. **User override** — CLI `--output file` always wins
-2. **Source default** — MCP defaults to file, CLI to stdout
-3. **Plugin hint** — e.g. `git_log` hints file (large), `git_status` hints stdout (small)
-
-Hints are advisory, never mandatory. When output is small enough, the framework may
-return it inline regardless of hints.
+These are auto-discovered by `bootstrap()` after built-in modules.
+LLMs can create/edit/delete them via authoring framework tools:
+- `authoring_help` — returns the full plugin/transform API guide
+- `list_user_extensions` — lists files in the user config dirs
+- `read_extension` — reads a user plugin/transform source file
+- `write_plugin` / `write_transform` — creates or overwrites a file
+- `delete_plugin` / `delete_transform` — removes a file
+- `reload` — hot-reloads all modules to pick up changes
 
 ## Project Layout
 
 ```
 mcpipe/
   src/mcpipe/
-    __init__.py          # Public API: from mcpipe import tool, Cmd, SinkPreference, bootstrap
+    __init__.py          # Public API: from mcpipe import tool, Cmd, bootstrap
     __main__.py          # Entrypoints: cli() and mcp() for console_scripts
     bootstrap.py         # Auto-discover & import all plugins (shared by CLI + MCP server)
     plugin.py            # @tool decorator, Cmd, ToolOutput, execute, registry
     transform.py         # @transform decorator, TransformStep, apply_transforms, builtins
     cache.py             # File cache (handles, TTL, GC, CachedOutput with slice/search)
     server.py            # MCP stdio JSON-RPC server (initialize, tools/list, tools/call)
-    framework.py         # Framework tools: paginate, search, handles
+    framework.py         # Framework tools: view, handles, reload
     log.py               # Delta-timestamp colored logging to stderr
     _version.py          # Version/appname from importlib.metadata
     types/               # Type definitions
       __init__.py        # Re-exports for internal use
       protocol.py        # MCP wire types (JSON-RPC, Tool, ToolResult, Init)
-      _hints.py          # SinkHint, SinkPreference
+      _hints.py          # (reserved for future hints)
     cli/                 # CLI entrypoint
       __init__.py
       args.py            # argv parsing, coercion
@@ -155,7 +162,8 @@ mcpipe/
 ## CLI Usage
 
 ```
-mcpipe [global flags] run [--transform NAME key=val ...] <tool> [-- tool_key=value ...]
+mcpipe [global flags] run [-T NAME key=val ...] <tool> [tool args...]
+mcpipe [global flags] view <handle> [-T NAME key=val ...]
 mcpipe list
 mcpipe server
 ```
@@ -200,5 +208,5 @@ before passing to the plugin. Both CLI and MCP benefit from this.
 ## Current State
 
 CLI and MCP server both work end-to-end. Plugin registry, cache pipeline,
-framework tools (paginate/search/handles), arg sanitization all functional.
+framework tools (view/handles/reload), arg sanitization all functional.
 Server registered in opencode config for LLM testing.

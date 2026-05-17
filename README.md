@@ -16,6 +16,7 @@
   - [Filesystem](#filesystem)
 - [Transforms](#transforms)
 - [Writing plugins](#writing-plugins)
+  - [Fuller example — git log](#fuller-example-git-log)
   - [Default output filters](#default-output-filters)
   - [Opting out of meta-params](#opting-out-of-meta-params)
 - [LLM self-authoring](#llm-self-authoring)
@@ -125,18 +126,66 @@ def sort(lines: list[str], reverse: bool = False) -> list[str]:
 A plugin is a Python file in `mcpipe/plugins/` (built-in) or `~/.config/mcpipe/plugins/` (user).
 
 ```python
+from typing import Annotated
 from mcpipe import Cmd, tool
 
 @tool("List running containers", read_only=True, destructive=False, idempotent=True)
-def docker_ps(all: bool = False) -> Cmd:
+def docker_ps(
+    all: Annotated[bool, "Show all containers (including stopped)"] = False,
+    format: Annotated[str, "Go template for output format"] = "",
+) -> Cmd:
     args = ["docker", "ps"]
     if all:
         args.append("--all")
+    if format:
+        args.extend(["--format", format])
     return Cmd(*args)
 ```
 
 Return `Cmd` to run a subprocess, or `str` for direct output. Type hints generate
-the MCP input schema automatically.
+the MCP input schema automatically. Use `Annotated[type, "description"]` to add
+descriptions to parameters — these appear in the tool's JSON Schema.
+
+Tool arguments are passed directly as keyword arguments to the function.
+String values are sanitized first (`~` and `$ENV` expanded).
+
+### Fuller example — git log
+
+A more complete example showing a helper function, input validation, and
+how `Annotated` args map to the subprocess call:
+
+```python
+from typing import Annotated
+from mcpipe import Cmd, tool
+
+def _git(*args: str, repo_path: str = ".") -> Cmd:
+    """Build a git Cmd with -C repo_path prefix."""
+    return Cmd("git", "-C", repo_path, *args)
+
+def _validate_ref(value: str, label: str = "value") -> None:
+    """Reject refs starting with '-' to prevent flag injection."""
+    if value.startswith("-"):
+        raise ValueError(f"Invalid {label}: '{value}' — cannot start with '-'")
+
+@tool("Show commit log", read_only=True, destructive=False, idempotent=True)
+def git_log(
+    repo_path: Annotated[str, "Path to the git repository"] = ".",
+    max_count: Annotated[int, "Number of commits to show"] = 10,
+    since: Annotated[str, "Show commits after this date (e.g. '1 week ago')"] = "",
+    path: Annotated[str, "Limit to commits touching this path"] = "",
+) -> Cmd:
+    args = ["log", f"--max-count={max_count}"]
+    if since:
+        _validate_ref(since, "since")
+        args.extend(["--since", since])
+    if path:
+        _validate_ref(path, "path")
+        args.extend(["--", path])
+    return _git(*args, repo_path=repo_path)
+```
+
+When an LLM calls `git_log(max_count=5, since="1 week ago")`, this builds
+and runs: `git -C . log --max-count=5 --since '1 week ago'`.
 
 ### Default output filters
 

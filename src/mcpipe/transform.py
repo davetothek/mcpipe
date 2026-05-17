@@ -3,8 +3,8 @@
 Transforms are composable, pure functions: lines in, lines out.
 They operate on tool output *after* caching — they never mutate the cache.
 
-Built-in transforms (search, limit, offset) are registered as weak entries.
-Any user @transform with the same name replaces the builtin.
+User transforms with the same name as a builtin simply overwrite it
+(builtins load first, user extensions second).
 """
 
 from __future__ import annotations
@@ -38,7 +38,6 @@ class _TransformEntry:
     func: Callable[..., list[str]]
     description: str
     param_schema: dict[str, Any]
-    weak: bool  # builtins are weak — user registrations replace them
 
 
 # ---------------------------------------------------------------------------
@@ -106,36 +105,29 @@ def _build_param_schema(func: Callable) -> dict[str, Any]:
     return schema
 
 
-def transform(description: str, *, weak: bool = False) -> Callable:
+def transform(description: str) -> Callable:
     """Register a function as a transform.
 
     The function must accept `lines: list[str]` as its first arg
     and return `list[str]`. Additional params are transform-specific.
 
-    weak=True marks builtins — user registrations with the same name
-    replace them silently.
+    If a transform with the same name already exists, it is overwritten.
     """
 
     def decorator[F: Callable[..., list[str]]](func: F) -> F:
         name: str = getattr(func, "__name__")  # noqa: B009
         existing = _REGISTRY.get(name)
 
-        # Don't let a weak entry overwrite a strong one
-        if existing and not existing.weak and weak:
-            _log.debug("weak transform %r skipped — strong override exists", name)
-            return func
-
         entry = _TransformEntry(
             func=func,
             description=description,
             param_schema=_build_param_schema(func),
-            weak=weak,
         )
         _REGISTRY[name] = entry
-        if existing and not weak:
-            _log.info("transform %r overridden by user registration", name)
+        if existing:
+            _log.info("transform %r overridden", name)
         else:
-            _log.debug("registered transform %r (weak=%s)", name, weak)
+            _log.debug("registered transform %r", name)
         return func
 
     return decorator

@@ -23,7 +23,7 @@
     - [`@tool(description, *, ...)`](#tooldescription-)
     - [`Cmd(*args: str)`](#cmdargs-str)
     - [`ToolOutput`](#tooloutput)
-    - [`@transform(description, *, weak=False)`](#transformdescription-weakfalse)
+    - [`@transform(description)`](#transformdescription)
     - [`TransformStep(name, params)`](#transformstepname-params)
   - [Examples](#examples)
   - [Pure Python tools](#pure-python-tools)
@@ -117,8 +117,8 @@ They run after caching and never mutate the cache.
 
 ### Built-in transforms
 
-All built-ins are registered as `weak=True` — a user `@transform` with the same name
-replaces them.
+All built-ins can be overridden — a user `@transform` with the same name
+replaces them (user extensions load after builtins).
 
 | Transform | Description | Params |
 |-----------|-------------|--------|
@@ -208,18 +208,25 @@ construct this directly — the framework builds it.
 | `preview` | `str \| None` | First few lines (large non-transformed output) |
 | `is_error` | `bool` | Whether the tool failed |
 
-#### `@transform(description, *, weak=False)`
+#### `@transform(description)`
 
 Decorator that registers a transform function. Must accept `lines: list[str]`
-as the first argument and return `list[str]`.
+as the first argument and return `list[str]`. If a transform with the same name
+already exists, it is overwritten.
+
+```python
+@transform(
+    description: str,  # Transform description
+)
+```
+
+Example:
 
 ```python
 @transform("Sort lines alphabetically")
 def sort(lines: list[str], reverse: bool = False) -> list[str]:
     return sorted(lines, reverse=reverse)
 ```
-
-`weak=True` marks builtins — user registrations with the same name replace them.
 
 #### `TransformStep(name, params)`
 

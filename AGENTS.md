@@ -70,7 +70,7 @@ One tool produces. Generic tools consume. Plugins never implement search or pagi
 Transforms are pure functions: `lines in → lines out`. They run after caching and
 never mutate the cache. Registered via `@transform` decorator.
 
-**Built-in transforms** (registered as `weak=True` — user overrides replace them):
+**Built-in transforms** (user overrides with the same name replace them):
 - `search` — filter lines by regex pattern
 - `limit` — return at most N lines
 - `offset` — skip first N lines

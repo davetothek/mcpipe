@@ -122,8 +122,7 @@ async def _list(opts: Opts) -> int:
         if filtered:
             print("\n  Transforms\n")
             for name, entry in sorted(filtered.items()):
-                weak = " (builtin)" if entry.weak else ""
-                print(f"    {name:20s} {entry.description}{weak}")
+                print(f"    {name:20s} {entry.description}")
 
     print()
     return 0

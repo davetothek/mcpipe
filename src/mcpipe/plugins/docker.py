@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from mcpipe import Cmd, tool
+from mcpipe.transform import TransformStep
 
 
 @tool(
@@ -123,6 +124,7 @@ def compose_logs(
     read_only=False,
     destructive=False,
     idempotent=True,
+    output_filter=[TransformStep("tail", {"n": 10})],
 )
 def compose_up(
     service: Annotated[str, "Service name (omit for all services)"] = "",
@@ -152,6 +154,7 @@ def compose_up(
     read_only=False,
     destructive=True,
     idempotent=True,
+    output_filter=[TransformStep("tail", {"n": 10})],
 )
 def compose_down(
     file: Annotated[str, "Path to compose file"] = "",
@@ -175,6 +178,7 @@ def compose_down(
     read_only=False,
     destructive=False,
     idempotent=True,
+    output_filter=[TransformStep("tail", {"n": 10})],
 )
 def compose_restart(
     service: Annotated[str, "Service name (omit for all services)"] = "",
@@ -195,6 +199,7 @@ def compose_restart(
     read_only=False,
     destructive=False,
     idempotent=True,
+    output_filter=[TransformStep("tail", {"n": 10})],
 )
 def compose_stop(
     service: Annotated[str, "Service name (omit for all services)"] = "",
@@ -215,6 +220,7 @@ def compose_stop(
     read_only=False,
     destructive=False,
     idempotent=True,
+    output_filter=[TransformStep("tail", {"n": 10})],
 )
 def compose_start(
     service: Annotated[str, "Service name (omit for all services)"] = "",
@@ -282,6 +288,7 @@ def compose_images(
     read_only=False,
     destructive=False,
     idempotent=True,
+    output_filter=[TransformStep("tail", {"n": 10})],
 )
 def compose_pull(
     service: Annotated[str, "Service name (omit for all services)"] = "",
@@ -302,6 +309,7 @@ def compose_pull(
     read_only=False,
     destructive=False,
     idempotent=True,
+    output_filter=[TransformStep("tail", {"n": 10})],
 )
 def compose_build(
     service: Annotated[str, "Service name (omit for all services)"] = "",

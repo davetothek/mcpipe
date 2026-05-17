@@ -89,6 +89,11 @@ def sort(lines: list[str], reverse: bool = False) -> list[str]:
 **Override builtins**: register a transform with the same name — it fully replaces
 the builtin. For example, a plugin could replace `search` with a native implementation.
 
+**output_filter — per-tool defaults**: tools can declare default transforms via
+`output_filter=[TransformStep("head", {"n": 10})]` on the `@tool` decorator.
+These run automatically when the caller sends no `_meta` transform params.
+Caller-provided transforms replace defaults entirely (no merging).
+
 ### Entrypoints
 
 Two ways in — both share the plugin registry and cache:

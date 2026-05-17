@@ -78,6 +78,7 @@ class _ToolEntry:
     tool: Tool
     ttl: int | None
     plugin: str
+    output_filter: list[TransformStep] | None = None
 
 
 def get_tools() -> dict[str, _ToolEntry]:
@@ -173,12 +174,17 @@ def tool(
     idempotent: bool = False,
     open_world: bool = True,
     ttl: int | None = None,
+    output_filter: list[TransformStep] | None = None,
 ) -> Callable:
     """Register a function as an mcpipe tool.
 
     The function name becomes the MCP tool name.
     Type hints generate the input schema.
     Return Cmd for subprocess, str for direct output.
+
+    output_filter: default transforms applied to output when the caller
+    does not provide explicit _meta transform params.  Caller-provided
+    transforms replace (not append to) these defaults.
     """
     plugin_name = _caller_plugin_name()
 
@@ -201,6 +207,7 @@ def tool(
             ),
             ttl=ttl,
             plugin=plugin_name,
+            output_filter=output_filter,
         )
         _REGISTRY[name] = entry
         return func
@@ -294,11 +301,14 @@ async def execute(
     _log.info("cached %s -> %s (%d lines)", tool_name, handle, line_count)
 
     # Apply transforms if requested
-    if transforms:
+    # Caller-provided transforms replace tool defaults entirely.
+    effective_transforms = transforms or entry.output_filter
+    if effective_transforms:
         lines = output.splitlines()
-        transformed = apply_transforms(lines, transforms)
+        transformed = apply_transforms(lines, effective_transforms)
         _log.debug(
-            "transforms: %d lines -> %d lines",
+            "transforms (%s): %d lines -> %d lines",
+            "caller" if transforms else "default",
             len(lines),
             len(transformed),
         )

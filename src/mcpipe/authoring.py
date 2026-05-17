@@ -60,6 +60,30 @@ def my_tool_name(
 - idempotent: True if calling it twice with the same args has the same effect
 - Ask the user if you're unsure about these flags
 
+### output_filter — default transforms
+Apply transforms automatically when the caller doesn't provide any `_meta` params.
+Useful for truncating verbose output (e.g. show only the last 10 lines of a build).
+
+```python
+from mcpipe import Cmd, tool
+from mcpipe.transform import TransformStep
+
+@tool(
+    "Push commits to remote",
+    read_only=False,
+    output_filter=[TransformStep("head", {"n": 10})],
+)
+def git_push(...) -> Cmd:
+    ...
+```
+
+- `output_filter` takes a list of `TransformStep(name, params)` — same transforms
+  available in `_meta` params (`head`, `tail`, `search`, `limit`, `offset`, etc.)
+- When the caller provides explicit `_meta` transforms, they **replace** the defaults
+  entirely (no merging).
+- If the caller sends no transforms and no `output_filter` is set, the full output
+  is returned (subject to the inline threshold).
+
 ### Return types
 - Return `str` for direct output (Python-computed results)
 - Return `Cmd(...)` for subprocess execution:

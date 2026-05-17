@@ -133,6 +133,26 @@ def docker_ps(all: bool = False) -> Cmd:
 Return `Cmd` to run a subprocess, or `str` for direct output. Type hints generate
 the MCP input schema automatically.
 
+### Default output filters
+
+Tools can declare default transforms that apply when the caller doesn't send any
+`_meta` params. Useful for keeping verbose output short by default:
+
+```python
+from mcpipe import Cmd, tool
+from mcpipe.transform import TransformStep
+
+@tool(
+    "Push commits to remote",
+    read_only=False,
+    output_filter=[TransformStep("head", {"n": 10})],
+)
+def git_push(...) -> Cmd:
+    ...
+```
+
+Caller-provided transforms replace defaults entirely — no merging.
+
 ## Development
 
 ```bash

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from mcpipe import Cmd, tool
+from mcpipe.transform import TransformStep
 
 # Default number of context lines in diff output.
 DEFAULT_CONTEXT_LINES = 3
@@ -31,6 +32,7 @@ def _validate_ref(value: str, label: str = "value") -> None:
     read_only=True,
     destructive=False,
     idempotent=True,
+    output_filter=[TransformStep("head", {"n": 20})],
 )
 def git_status(
     repo_path: Annotated[str, "Path to the git repository"] = ".",
@@ -189,6 +191,7 @@ def git_add(
     read_only=False,
     destructive=False,
     idempotent=False,
+    output_filter=[TransformStep("head", {"n": 5})],
 )
 def git_commit(
     repo_path: Annotated[str, "Path to the git repository"] = ".",
@@ -204,6 +207,7 @@ def git_commit(
     read_only=False,
     destructive=True,
     idempotent=True,
+    output_filter=[TransformStep("head", {"n": 10})],
 )
 def git_reset(
     repo_path: Annotated[str, "Path to the git repository"] = ".",
@@ -262,6 +266,7 @@ def git_checkout(
     read_only=False,
     destructive=False,
     idempotent=True,
+    output_filter=[TransformStep("head", {"n": 10})],
 )
 def git_fetch(
     repo_path: Annotated[str, "Path to the git repository"] = ".",
@@ -285,6 +290,7 @@ def git_fetch(
     read_only=False,
     destructive=False,
     idempotent=False,
+    output_filter=[TransformStep("head", {"n": 10})],
 )
 def git_pull(
     repo_path: Annotated[str, "Path to the git repository"] = ".",
@@ -309,6 +315,7 @@ def git_pull(
     read_only=False,
     destructive=False,
     idempotent=False,
+    output_filter=[TransformStep("head", {"n": 10})],
 )
 def git_push(
     repo_path: Annotated[str, "Path to the git repository"] = ".",
@@ -442,6 +449,7 @@ def git_blame(
     read_only=False,
     destructive=False,
     idempotent=False,
+    output_filter=[TransformStep("head", {"n": 5})],
 )
 def git_cherry_pick(
     repo_path: Annotated[str, "Path to the git repository"] = ".",
@@ -463,6 +471,7 @@ def git_cherry_pick(
     read_only=False,
     destructive=False,
     idempotent=False,
+    output_filter=[TransformStep("head", {"n": 5})],
 )
 def git_revert(
     repo_path: Annotated[str, "Path to the git repository"] = ".",
@@ -500,6 +509,7 @@ def git_remote(
     read_only=False,
     destructive=False,
     idempotent=False,
+    output_filter=[TransformStep("head", {"n": 10})],
 )
 def git_merge(
     repo_path: Annotated[str, "Path to the git repository"] = ".",

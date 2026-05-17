@@ -173,8 +173,9 @@ from mcpipe import tool, Cmd, transform, TransformStep, ToolOutput
 #### `@tool(description, *, ...)`
 
 Decorator that registers a function as an MCP tool. The function name becomes the
-tool name. Type hints generate the JSON Schema. Return `Cmd` for subprocess or `str`
-for direct output.
+tool name. Type hints generate the JSON Schema.
+
+The decorated function must return `Cmd` (to run a subprocess) or `str` (direct output).
 
 ```python
 @tool(

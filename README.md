@@ -211,6 +211,7 @@ is already available.
 ## Development
 
 ```bash
+uv run poe hooks    # install git hooks
 uv run poe check    # lint + typecheck + tests
 uv run poe test     # tests only
 uv run poe lint     # ruff

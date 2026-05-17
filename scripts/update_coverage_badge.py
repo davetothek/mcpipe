@@ -7,7 +7,7 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-COVERAGE_XML = Path("coverage.xml")
+COVERAGE_XML = Path(".cache/coverage/coverage.xml")
 README = Path("README.md")
 
 BADGE_PATTERN = re.compile(

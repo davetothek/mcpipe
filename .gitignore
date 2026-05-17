@@ -9,8 +9,5 @@ wheels/
 # Virtual environments
 .venv
 
-# Test / coverage reports
-coverage.xml
-pytest-report.xml
-htmlcov/
-.coverage
+# Test / coverage reports (now in .cache/coverage/)
+.cache/

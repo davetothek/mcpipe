@@ -82,6 +82,7 @@ format = "ruff format ."
 typecheck = "ty check src tests"
 check  = { sequence = ["lint", "typecheck", "test"], help = "Run lint + typecheck + tests" }
 release = { help = "Full release workflow: bump version, generate changelog, merge to main, tag, and sync back", cmd = "bash scripts/release.sh" }
+hooks = { help = "Install git hooks", cmd = "cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit" }
 clean = { help = "Remove build artifacts and cache files", cmd = "rm -rf dist/ build/ **/*.egg-info/ .cache/ htmlcov/ .coverage .ruff_cache/ .mypy_cache/ **/__pycache__/" }
 build = { help = "Build wheel and sdist", cmd = "uv build" }
 docs = { help = "Build HTML documentation", cmd = "bash scripts/docs.sh" }

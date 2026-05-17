@@ -8,3 +8,9 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Test / coverage reports
+coverage.xml
+pytest-report.xml
+htmlcov/
+.coverage

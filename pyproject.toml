@@ -11,12 +11,14 @@ dev = [
     "debugpy>=1.8.20",
     "poethepoet>=0.46.0",
     "pytest>=9.0.3",
+    "pytest-cov>=6.0",
     "ruff>=0.15.13",
     "ty>=0.0.37",
 ]
 
 [project.scripts]
 mcpipe = "mcpipe.__main__:cli"
+mcpipe-mcp = "mcpipe.__main__:mcp"
 
 
 [build-system]
@@ -50,7 +52,18 @@ select = [
 
 [tool.pytest.ini_options]
 cache_dir = ".cache/pytest"
-addopts = "--no-header -q"
+addopts = "--no-header -q --cov=mcpipe --cov-report=term-missing --cov-report=xml:coverage.xml --junitxml=pytest-report.xml"
+
+[tool.coverage.run]
+source = ["mcpipe"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_lines = [
+    "if __name__",
+    "pragma: no cover",
+]
 
 [tool.ty.environment]
 extra-paths = ["src"]
@@ -62,8 +75,6 @@ docstring-code-format = true
 
 [tool.poe.tasks]
 test = "pytest"
-test-report = "pytest --junitxml=pytest-report.xml"
-test-coverage = { help = "Run tests with coverage", cmd = "pytest --cov=src/mcpipe tests/" }
 lint = "ruff check . --fix"
 format = "ruff format ."
 typecheck = "ty check src tests"

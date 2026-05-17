@@ -10,6 +10,7 @@
 A plugin-based MCP server framework that protects LLM context windows. Any CLI tool
 can be exposed as an MCP tool — output is cached and accessed through generic
 `paginate` and `search` framework tools instead of dumped into the conversation.
+Output can be post-processed through a pluggable **transform** pipeline.
 
 Zero hard dependencies. Python 3.13+.
 
@@ -36,21 +37,21 @@ One tool produces. Generic tools consume. Plugins never implement search or pagi
 ## Architecture
 
 ```
-┌─────────┐     ┌──────────┐     ┌──────┐
-│  Source  │────▶│ Executor │────▶│ Sink │──▶ handle + summary
-│stdio/cli│     └──────────┘     └──────┘
-└─────────┘          │               │
-                ┌────┴────┐     ┌────┴──────────┐
-                │ Plugins │     │ /tmp/mcpipe/   │
-                │git, ... │     │ <name>_<ts>    │
-                └─────────┘     └────────────────┘
-                                     ▲
-                              ┌──────┴──────┐
-                              │  Framework   │
-                              │  Tools       │
-                              │  - paginate  │
-                              │  - search    │
-                              └─────────────┘
+┌─────────┐     ┌──────────┐     ┌──────┐     ┌────────────┐
+│  Source  │────▶│ Executor │────▶│ Sink │────▶│ Transforms │──▶ result
+│stdio/cli│     └──────────┘     └──────┘     └────────────┘
+└─────────┘          │               │              │
+                ┌────┴────┐     ┌────┴──────────┐   │ lines in → lines out
+                │ Plugins │     │ /tmp/mcpipe/   │   │ pure, composable
+                │git, ... │     │ <name>_<ts>    │   │ cache never mutated
+                └─────────┘     └────────────────┘   │
+                                     ▲          ┌────┴────────┐
+                              ┌──────┴──────┐   │ @transform   │
+                              │  Framework   │   │ search,limit │
+                              │  Tools       │   │ offset,head  │
+                              │  - paginate  │   │ tail, ...    │
+                              │  - search    │   │ (extensible) │
+                              └─────────────┘   └─────────────┘
 ```
 
 ### Two kinds of tools
@@ -59,7 +60,31 @@ One tool produces. Generic tools consume. Plugins never implement search or pagi
    Registered by plugins. Don't know about caching or pagination.
 
 2. **Framework tools** — generic (paginate, search). Consume cached output via handles.
-   Built into mcpipe. Work with any plugin's output.
+   Built into mcpipe. Work with any plugin's output. Delegate to the transform registry.
+
+### Transforms — pluggable post-processing
+
+Transforms are pure functions: `lines in → lines out`. They run after caching and
+never mutate the cache. Registered via `@transform` decorator.
+
+**Built-in transforms** (registered as `weak=True` — user overrides replace them):
+- `search` — filter lines by regex pattern
+- `limit` — return at most N lines
+- `offset` — skip first N lines
+- `head` — first N lines
+- `tail` — last N lines
+
+**Custom transforms**: any plugin can register new transforms:
+```python
+from mcpipe import transform
+
+@transform("Sort lines alphabetically")
+def sort(lines: list[str], reverse: bool = False) -> list[str]:
+    return sorted(lines, reverse=reverse)
+```
+
+**Override builtins**: register a transform with the same name — it fully replaces
+the builtin. For example, a plugin could replace `search` with a native implementation.
 
 ### Entrypoints
 
@@ -104,11 +129,15 @@ return it inline regardless of hints.
 mcpipe/
   src/mcpipe/
     __init__.py          # Public API: from mcpipe import tool, Cmd, SinkPreference, bootstrap
-    __main__.py          # Thin trampoline to cli.main()
+    __main__.py          # Entrypoints: cli() and mcp() for console_scripts
     bootstrap.py         # Auto-discover & import all plugins (shared by CLI + MCP server)
-    plugin.py            # @tool decorator, Cmd, registry, execute
-    cache.py             # File cache (handles, TTL, GC)
-    server.py            # MCP stdio JSON-RPC server
+    plugin.py            # @tool decorator, Cmd, ToolOutput, execute, registry
+    transform.py         # @transform decorator, TransformStep, apply_transforms, builtins
+    cache.py             # File cache (handles, TTL, GC, CachedOutput with slice/search)
+    server.py            # MCP stdio JSON-RPC server (initialize, tools/list, tools/call)
+    framework.py         # Framework tools: paginate, search, handles
+    log.py               # Delta-timestamp colored logging to stderr
+    _version.py          # Version/appname from importlib.metadata
     types/               # Type definitions
       __init__.py        # Re-exports for internal use
       protocol.py        # MCP wire types (JSON-RPC, Tool, ToolResult, Init)
@@ -123,6 +152,44 @@ mcpipe/
       docker.py
 ```
 
+## CLI Usage
+
+```
+mcpipe [global flags] run [--transform NAME key=val ...] <tool> [-- tool_key=value ...]
+mcpipe list
+mcpipe server
+```
+
+- Transform flags: `--transform NAME key=value` or `-T NAME key=value` (repeatable, order matters)
+- Tool args: bare `key=value` after `--` separator
+- `--` is optional but recommended for clarity
+
+## MCP Server
+
+The MCP server (`server.py`) speaks JSON-RPC 2.0 over stdio (newline-delimited).
+
+Supported methods:
+- `initialize` → capabilities + server info
+- `notifications/initialized` → no-op
+- `tools/list` → all registered tools with schemas + annotations
+- `tools/call` → execute tool, return ToolResult
+- `ping` → pong
+
+### Pipeline meta-params
+
+Any tool call can include pipeline meta-params prefixed with `_`:
+- `_offset` (int) — start at this line
+- `_limit` (int) — max lines to return
+- `_search` (str) — filter output by regex
+
+These are extracted before dispatch and desugared into transform steps.
+Plugins never see them.
+
+### Arg sanitization
+
+`execute()` runs `os.path.expanduser` + `os.path.expandvars` on all string args
+before passing to the plugin. Both CLI and MCP benefit from this.
+
 ## Conventions
 
 - **Zero dependencies** — stdlib only for the core framework. Plugins may declare their own.
@@ -132,5 +199,6 @@ mcpipe/
 
 ## Current State
 
-CLI works end-to-end: argv parsing, plugin registry, subprocess execution.
-`cache.py`, `server.py` are not yet implemented.
+CLI and MCP server both work end-to-end. Plugin registry, cache pipeline,
+framework tools (paginate/search/handles), arg sanitization all functional.
+Server registered in opencode config for LLM testing.

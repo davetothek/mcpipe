@@ -9,6 +9,7 @@ from mcpipe.bootstrap import bootstrap
 from mcpipe.cli.args import Opts, coerce_args, parse_argv
 from mcpipe.log import get_logger, setup_logging
 from mcpipe.plugin import execute, get_tools
+from mcpipe.transform import TransformStep
 
 _log = get_logger("cli")
 
@@ -22,8 +23,16 @@ async def _run(opts: Opts) -> int:
     args = coerce_args(opts.tool, opts.tool_args, entry.tool.input_schema)
     _log.debug("tool=%s args=%s", opts.tool, args)
 
+    transforms: list[TransformStep] | None = None
+    if opts.transforms:
+        transforms = [
+            TransformStep(name=name, params=params)
+            for name, params in opts.transforms
+        ]
+        _log.debug("transforms: %s", transforms)
+
     try:
-        result = await execute(opts.tool, args)
+        result = await execute(opts.tool, args, transforms=transforms)
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -32,12 +41,14 @@ async def _run(opts: Opts) -> int:
         print(result.text, file=sys.stderr)
         return 1
 
-    if result.is_cached:
+    if result.is_inline:
+        print(result.text, end="")
+    else:
         print(f"handle:  {result.handle}")
         print(f"lines:   {result.total_lines}")
         print(f"preview:\n{result.preview}")
-    else:
-        print(result.text or "", end="")
+
+    _log.debug("handle: %s", result.handle)
     return 0
 
 
@@ -45,17 +56,27 @@ async def _list() -> int:
     tools = get_tools()
     if not tools:
         print("No tools registered.")
-        return 0
+    else:
+        # Group by plugin
+        by_plugin: dict[str, list[tuple[str, str]]] = {}
+        for name, entry in sorted(tools.items()):
+            by_plugin.setdefault(entry.plugin, []).append((name, entry.tool.description))
 
-    # Group by plugin
-    by_plugin: dict[str, list[tuple[str, str]]] = {}
-    for name, entry in sorted(tools.items()):
-        by_plugin.setdefault(entry.plugin, []).append((name, entry.tool.description))
+        print("\n  Tools")
+        for plugin, entries in sorted(by_plugin.items()):
+            print(f"\n    [{plugin}]")
+            for name, desc in entries:
+                print(f"      {name:20s} {desc}")
 
-    for plugin, entries in sorted(by_plugin.items()):
-        print(f"\n  {plugin}")
-        for name, desc in entries:
-            print(f"    {name:20s} {desc}")
+    from mcpipe.transform import get_transforms
+
+    transforms = get_transforms()
+    if transforms:
+        print("\n  Transforms\n")
+        for name, entry in sorted(transforms.items()):
+            weak = " (builtin)" if entry.weak else ""
+            print(f"    {name:20s} {entry.description}{weak}")
+
     print()
     return 0
 
@@ -81,7 +102,9 @@ async def main(argv: list[str] | None = None) -> int:
         case "list":
             return await _list()
         case "server":
-            print("MCP server not yet implemented.", file=sys.stderr)
-            return 1
+            from mcpipe.server import serve
+
+            await serve()
+            return 0
         case _:
             return 1

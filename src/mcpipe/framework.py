@@ -3,6 +3,9 @@
 These are built into mcpipe and work with any plugin's cached output.
 They should NOT be in the plugins/ directory since they are framework-level,
 not plugin-level, but they register as tools via the same @tool decorator.
+
+paginate and search delegate to the transform registry, so user-registered
+overrides of the `offset`, `limit`, and `search` transforms take effect here.
 """
 
 from __future__ import annotations
@@ -12,6 +15,7 @@ from typing import Annotated
 from mcpipe.cache import list_handles, load
 from mcpipe.log import get_logger
 from mcpipe.plugin import SinkPreference, tool
+from mcpipe.transform import TransformStep, apply_transforms
 
 _log = get_logger("framework")
 
@@ -32,7 +36,14 @@ def paginate(
         cached = load(handle)
     except FileNotFoundError:
         return f"Error: no cached output for handle '{handle}'"
-    lines = cached.slice(offset, limit)
+
+    steps = []
+    if offset:
+        steps.append(TransformStep("offset", {"n": offset}))
+    steps.append(TransformStep("limit", {"n": limit}))
+
+    lines = apply_transforms(cached.lines, steps) if steps else cached.lines[:limit]
+
     if not lines:
         return f"No lines at offset {offset} (total: {cached.total_lines})"
     _log.debug(
@@ -59,7 +70,10 @@ def search(
         cached = load(handle)
     except FileNotFoundError:
         return f"Error: no cached output for handle '{handle}'"
-    matches = cached.search(pattern)
+
+    steps = [TransformStep("search", {"pattern": pattern})]
+    matches = apply_transforms(cached.lines, steps)
+
     if not matches:
         return f"No matches for '{pattern}' in {handle} ({cached.total_lines} lines)"
     _log.debug(
@@ -67,7 +81,7 @@ def search(
         handle, pattern, len(matches),
     )
     header = f"[{handle}] {len(matches)} matches for '{pattern}':\n"
-    body = "\n".join(f"  {lineno}: {line}" for lineno, line in matches)
+    body = "\n".join(f"  {line}" for line in matches)
     return header + body
 
 

@@ -25,6 +25,9 @@ class Opts:
     tool: str = ""
     tool_args: dict[str, str] = field(default_factory=dict)
 
+    # transform steps (run-specific)
+    transforms: list[tuple[str, dict[str, str]]] = field(default_factory=list)
+
     @property
     def use_color(self) -> bool:
         if self.color == "always":
@@ -64,8 +67,16 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command")
 
     # -- run --
-    run_p = sub.add_parser("run", help="execute a tool")
+    run_p = sub.add_parser(
+        "run",
+        help="execute a tool",
+        usage="%(prog)s [--transform NAME key=v ...] <tool> [tool args...]",
+    )
     run_p.add_argument("tool", help="tool name")
+    run_p.add_argument(
+        "tool_remainder", nargs=argparse.REMAINDER,
+        help=argparse.SUPPRESS,
+    )
 
     # -- list --
     sub.add_parser("list", help="list available tools")
@@ -77,19 +88,74 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _parse_tool_args(remainder: list[str]) -> dict[str, str]:
-    """Parse leftover --key=value / --flag args meant for the tool."""
+    """Parse tool args in key=value or --key=value format."""
     args: dict[str, str] = {}
     for arg in remainder:
+        if arg == "--":
+            continue
         if arg.startswith("--") and "=" in arg:
             key, value = arg[2:].split("=", 1)
             args[key.replace("-", "_")] = value
         elif arg.startswith("--"):
             args[arg[2:].replace("-", "_")] = "true"
+        elif "=" in arg:
+            key, value = arg.split("=", 1)
+            args[key.replace("-", "_")] = value
     return args
+
+
+def _extract_transforms(
+    argv: list[str],
+) -> tuple[list[str], list[tuple[str, dict[str, str]]]]:
+    """Pre-parse --transform / -T blocks from argv before argparse.
+
+    Each --transform consumes: NAME [key=value ...] until the next flag or --.
+    Returns (remaining_argv, transforms).
+
+    Examples:
+        --transform search pattern=text --transform limit n=10
+        -T head n=5
+        --transform limit n=10
+    """
+    remaining: list[str] = []
+    transforms: list[tuple[str, dict[str, str]]] = []
+    i = 0
+
+    while i < len(argv):
+        arg = argv[i]
+        if arg in ("--transform", "-T"):
+            i += 1
+            if i >= len(argv):
+                break
+            # Next token is the transform name (or name=value shorthand)
+            name_tok = argv[i]
+            i += 1
+            if "=" in name_tok:
+                name, positional = name_tok.split("=", 1)
+                params: dict[str, str] = {"_positional": positional}
+            else:
+                name = name_tok
+                params = {}
+            while i < len(argv):
+                tok = argv[i]
+                if tok.startswith("-") or tok == "--" or "=" not in tok:
+                    break
+                k, v = tok.split("=", 1)
+                params[k] = v
+                i += 1
+            transforms.append((name, params))
+        else:
+            remaining.append(arg)
+            i += 1
+
+    return remaining, transforms
 
 
 def parse_argv(argv: list[str]) -> Opts:
     """Parse argv into structured Opts."""
+    # Extract --transform blocks before argparse (argparse can't handle multi-value repeatable flags)
+    argv, transforms = _extract_transforms(argv)
+
     parser = build_parser()
     ns, remainder = parser.parse_known_args(argv)
 
@@ -106,7 +172,10 @@ def parse_argv(argv: list[str]) -> Opts:
 
     if ns.command == "run":
         opts.tool = ns.tool
-        opts.tool_args = _parse_tool_args(remainder)
+        opts.tool_args = _parse_tool_args(
+            ns.tool_remainder + remainder,
+        )
+        opts.transforms = transforms
     elif remainder:
         parser.error(f"unrecognized arguments: {' '.join(remainder)}")
 

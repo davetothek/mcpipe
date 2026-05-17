@@ -10,12 +10,15 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import os
 import typing
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Annotated, Any, get_type_hints
 
+from mcpipe.cache import store
 from mcpipe.log import get_logger
+from mcpipe.transform import TransformStep, apply_transforms
 from mcpipe.types._hints import SinkHint, SinkPreference
 from mcpipe.types.protocol import Tool, ToolAnnotations
 
@@ -25,8 +28,12 @@ _log = get_logger("plugin")
 # Cmd — "run this as a subprocess"
 # ---------------------------------------------------------------------------
 
-# Threshold (in lines) above which output is always cached.
+# Output below this threshold is returned inline (full text in response).
+# All output is always cached regardless.
 INLINE_THRESHOLD = 50
+
+# Meta-param prefix — pipeline params use this to avoid collision with tool args.
+META_PREFIX = "_"
 
 
 @dataclass(slots=True)
@@ -43,19 +50,20 @@ class Cmd:
 class ToolOutput:
     """Structured result from execute().
 
-    If the output was cached, `handle` is set and `preview` contains the
-    first few lines. If inline, `text` contains the full output.
+    Every result has a handle (output is always cached).
+    Small output also includes `text` with the full content inline.
+    Large output includes `preview` with the first few lines.
     """
 
-    handle: str | None = None
-    text: str | None = None
-    preview: str = ""
+    handle: str
     total_lines: int = 0
+    text: str | None = None
+    preview: str | None = None
     is_error: bool = False
 
     @property
-    def is_cached(self) -> bool:
-        return self.handle is not None
+    def is_inline(self) -> bool:
+        return self.text is not None
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +200,16 @@ def tool(
 _PREVIEW_LINES = 5
 
 
+def _sanitize_args(args: dict[str, Any]) -> dict[str, Any]:
+    """Expand ~ and $ENV in string arguments."""
+    out: dict[str, Any] = {}
+    for key, value in args.items():
+        if isinstance(value, str):
+            value = os.path.expandvars(os.path.expanduser(value))
+        out[key] = value
+    return out
+
+
 def _make_preview(output: str, max_lines: int = _PREVIEW_LINES) -> str:
     lines = output.splitlines()[:max_lines]
     return "\n".join(lines)
@@ -199,7 +217,14 @@ def _make_preview(output: str, max_lines: int = _PREVIEW_LINES) -> str:
 
 async def _run_func(entry: _ToolEntry, args: dict[str, Any]) -> str:
     """Run the tool function, handling both Cmd and str returns."""
-    result = entry.func(**args)
+    try:
+        result = entry.func(**args)
+    except TypeError as exc:
+        # Turn "got an unexpected keyword argument 'x'" into a clean error
+        known = list(entry.tool.input_schema.get("properties", {}).keys())
+        raise ValueError(
+            f"{exc}. Known args: {', '.join(known) or '(none)'}",
+        ) from None
 
     if isinstance(result, Cmd):
         proc = await asyncio.create_subprocess_exec(
@@ -219,10 +244,16 @@ async def _run_func(entry: _ToolEntry, args: dict[str, Any]) -> str:
     raise TypeError(f"Tool returned unexpected type: {type(result)}")
 
 
-async def execute(tool_name: str, args: dict[str, Any]) -> ToolOutput:
-    """Look up a tool, execute it, and route output through cache if needed."""
-    from mcpipe.cache import store  # deferred to avoid circular import
+async def execute(
+    tool_name: str,
+    args: dict[str, Any],
+    transforms: list[TransformStep] | None = None,
+) -> ToolOutput:
+    """Look up a tool, execute it, cache output, and return structured result.
 
+    If transforms are provided, they are applied in order after caching.
+    Transforms are pure: lines in → lines out. The cache is never mutated.
+    """
     entry = _REGISTRY.get(tool_name)
     if entry is None:
         raise ValueError(f"Unknown tool: {tool_name}")
@@ -230,29 +261,51 @@ async def execute(tool_name: str, args: dict[str, Any]) -> ToolOutput:
     _log.info("executing %s", tool_name)
     _log.debug("args: %s", args)
 
+    args = _sanitize_args(args)
+
     try:
         output = await _run_func(entry, args)
     except RuntimeError as exc:
         _log.warning("tool %s failed: %s", tool_name, exc)
-        return ToolOutput(text=str(exc), is_error=True)
-
-    line_count = output.count("\n") + (1 if output and not output.endswith("\n") else 0)
-    should_cache = (
-        entry.sink_hint.prefer == SinkPreference.FILE or line_count > INLINE_THRESHOLD
-    )
-
-    _log.debug(
-        "%s: %d lines, hint=%s, caching=%s",
-        tool_name, line_count, entry.sink_hint.prefer, should_cache,
-    )
-
-    if should_cache:
-        handle = store(tool_name, output, ttl=entry.sink_hint.ttl)
-        _log.info("cached %s -> %s", tool_name, handle)
+        handle = store(tool_name, str(exc), ttl=entry.sink_hint.ttl)
         return ToolOutput(
             handle=handle,
-            preview=_make_preview(output),
-            total_lines=line_count,
+            text=str(exc),
+            is_error=True,
         )
 
-    return ToolOutput(text=output, total_lines=line_count)
+    line_count = output.count("\n") + (1 if output and not output.endswith("\n") else 0)
+    handle = store(tool_name, output, ttl=entry.sink_hint.ttl)
+    _log.info("cached %s -> %s (%d lines)", tool_name, handle, line_count)
+
+    # Apply transforms if requested
+    if transforms:
+        lines = output.splitlines()
+        transformed = apply_transforms(lines, transforms)
+        _log.debug(
+            "transforms: %d lines -> %d lines",
+            len(lines),
+            len(transformed),
+        )
+        text = "\n".join(transformed)
+        return ToolOutput(
+            handle=handle,
+            total_lines=line_count,
+            text=text,
+        )
+
+    inline = line_count <= INLINE_THRESHOLD
+    _log.debug(
+        "%s: %d lines, hint=%s, inline=%s",
+        tool_name,
+        line_count,
+        entry.sink_hint.prefer,
+        inline,
+    )
+
+    return ToolOutput(
+        handle=handle,
+        total_lines=line_count,
+        text=output if inline else None,
+        preview=_make_preview(output) if not inline else None,
+    )

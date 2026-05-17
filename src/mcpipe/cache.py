@@ -53,7 +53,12 @@ def store(tool_name: str, output: str, ttl: int | None = None) -> str:
     meta_path = CACHE_DIR / f"{handle}.meta"
     effective_ttl = ttl if ttl is not None else DEFAULT_TTL
     meta_path.write_text(f"{ts}\n{effective_ttl}\n", encoding="utf-8")
-    _log.debug("stored %s (%d bytes, ttl=%ds)", handle, len(output), effective_ttl)
+    _log.debug(
+        "stored %s (%d bytes, expires in %dm)",
+        handle,
+        len(output),
+        effective_ttl // 60,
+    )
     return handle
 
 
@@ -97,7 +102,8 @@ def gc() -> int:
             meta_path.unlink(missing_ok=True)
             removed += 1
             _log.debug("gc: removed expired %s", handle)
-    _log.info("gc: removed %d expired entries", removed)
+    if removed:
+        _log.info("gc: removed %d expired entries", removed)
     return removed
 
 

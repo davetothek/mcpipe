@@ -13,6 +13,7 @@ import sys
 class _Ansi:
     GREY = "\033[90m"
     BLUE = "\033[94m"
+    CYAN = "\033[96m"
     YELLOW = "\033[93m"
     RED = "\033[91m"
     BOLD_RED = "\033[1;91m"
@@ -32,9 +33,10 @@ class _DeltaFormatter(logging.Formatter):
         if _DeltaFormatter._first is None:
             _DeltaFormatter._first = record.created
             ts = self.formatTime(record, self.datefmt)
+            tag = f"{ts:>9s}"
             if self._color:
-                return f"{_Ansi.GREY}{ts}{_Ansi.RESET}"
-            return ts
+                return f"{_Ansi.GREY}{tag}{_Ansi.RESET}"
+            return tag
 
         delta = record.created - _DeltaFormatter._first
         m, s = divmod(int(delta), 60)
@@ -47,19 +49,40 @@ class _DeltaFormatter(logging.Formatter):
     def _level_color(self, levelno: int) -> str:
         if not self._color:
             return ""
+        if levelno >= logging.CRITICAL:
+            return _Ansi.BOLD_RED
         if levelno >= logging.ERROR:
             return _Ansi.RED
         if levelno >= logging.WARNING:
             return _Ansi.YELLOW
-        if levelno >= logging.DEBUG:
+        if levelno >= logging.INFO:
             return ""
+        if levelno >= logging.DEBUG:
+            return _Ansi.CYAN
         return _Ansi.BLUE  # TRACE
+
+    def _level_tag(self, levelno: int) -> str:
+        if levelno >= logging.CRITICAL:
+            return "[FTL] "
+        if levelno >= logging.ERROR:
+            return "[ERR] "
+        if levelno >= logging.WARNING:
+            return "[WAR] "
+        if levelno >= logging.INFO:
+            return "[INF] "
+        if levelno >= logging.DEBUG:
+            return "[DBG] "
+        return "[TRC] "
 
     def format(self, record: logging.LogRecord) -> str:
         prefix = self._prefix(record)
-        color = self._level_color(record.levelno)
-        reset = _Ansi.RESET if self._color and color else ""
-        return f"{prefix} {color}{record.getMessage()}{reset}"
+        msg = record.getMessage()
+        if self._color:
+            color = self._level_color(record.levelno)
+            reset = _Ansi.RESET if color else ""
+            return f"{prefix} {color}{msg}{reset}"
+        tag = self._level_tag(record.levelno)
+        return f"{prefix} {tag}{msg}"
 
 
 # Trace level (below DEBUG)

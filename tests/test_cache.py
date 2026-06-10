@@ -41,12 +41,18 @@ class TestLoad:
         with pytest.raises(FileNotFoundError):
             load("nonexistent_handle")
 
+    def test_invalid_handle_raises(self, tmp_cache):
+        with pytest.raises(ValueError, match="Invalid cache handle"):
+            load("../invalid_handle")
+
 
 class TestCachedOutput:
     def test_slice(self):
         co = CachedOutput(
-            handle="h", lines=["a", "b", "c", "d"],
-            total_lines=4, created_at=0,
+            handle="h",
+            lines=["a", "b", "c", "d"],
+            total_lines=4,
+            created_at=0,
         )
         assert co.slice(1, 2) == ["b", "c"]
 
@@ -56,8 +62,10 @@ class TestCachedOutput:
 
     def test_search_matches(self):
         co = CachedOutput(
-            handle="h", lines=["foo bar", "baz", "foobar"],
-            total_lines=3, created_at=0,
+            handle="h",
+            lines=["foo bar", "baz", "foobar"],
+            total_lines=3,
+            created_at=0,
         )
         matches = co.search("foo")
         assert len(matches) == 2
@@ -70,8 +78,10 @@ class TestCachedOutput:
 
     def test_search_case_insensitive(self):
         co = CachedOutput(
-            handle="h", lines=["Hello", "HELLO", "world"],
-            total_lines=3, created_at=0,
+            handle="h",
+            lines=["Hello", "HELLO", "world"],
+            total_lines=3,
+            created_at=0,
         )
         assert len(co.search("hello")) == 2
 
@@ -92,6 +102,13 @@ class TestGc:
         assert removed == 0
         assert (tmp_cache / handle).exists()
 
+    def test_evict_expired_malformed_meta(self, tmp_cache):
+        # Create a malformed meta file with only one line
+        meta = tmp_cache / "malformed.meta"
+        meta.write_text("only_one_line\n")
+        removed = evict_expired()
+        assert removed == 0
+
 
 class TestListHandles:
     def test_returns_active(self, tmp_cache):
@@ -107,3 +124,10 @@ class TestListHandles:
         meta.write_text(f"{int(time.time()) - 100}\n1\n")
         active = list_handles()
         assert handle not in active
+
+    def test_list_handles_malformed_meta(self, tmp_cache):
+        # Create a malformed meta file with only one line
+        meta = tmp_cache / "malformed.meta"
+        meta.write_text("only_one_line\n")
+        active = list_handles()
+        assert "malformed" not in active

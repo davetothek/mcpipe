@@ -11,5 +11,5 @@ try:
     _meta = metadata("mcpipe")
     __version__ = _meta["Version"]
     __appname__ = _meta["Name"]
-except Exception:
+except Exception:  # pragma: no cover
     pass

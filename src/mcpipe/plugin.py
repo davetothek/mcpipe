@@ -91,7 +91,8 @@ def _clear_plugin_tools() -> set[str]:
     Returns the set of removed tool names.
     """
     to_remove = {
-        name for name, entry in _REGISTRY.items()
+        name
+        for name, entry in _REGISTRY.items()
         if entry.plugin not in _FRAMEWORK_PLUGINS
     }
     for name in to_remove:

@@ -12,6 +12,7 @@ from mcpipe.config import get_config
 from mcpipe.plugin import (
     Cmd,
     ToolOutput,
+    _clear_plugin_tools,
     _make_preview,
     _sanitize_args,
     execute,
@@ -168,6 +169,7 @@ class TestExecute:
 
     def test_transform_search(self, tmp_cache):
         from mcpipe.bootstrap import bootstrap
+
         bootstrap()
 
         @tool("pipe search test")
@@ -186,7 +188,9 @@ class TestExecute:
 
     def test_transform_paginate(self, tmp_cache):
         from mcpipe.bootstrap import bootstrap
+
         bootstrap()
+
         @tool("pipe paginate test")
         def _test_pipe_paginate() -> str:
             return "\n".join(f"line{i}" for i in range(20))
@@ -205,7 +209,9 @@ class TestExecute:
 
     def test_transform_search_no_match(self, tmp_cache):
         from mcpipe.bootstrap import bootstrap
+
         bootstrap()
+
         @tool("pipe no match test")
         def _test_pipe_nomatch() -> str:
             return "aaa\nbbb\nccc"
@@ -215,3 +221,50 @@ class TestExecute:
             execute("_test_pipe_nomatch", {}, transforms=transforms),
         )
         assert output.text == ""
+
+    def test_invalid_arg_types_raises_value_error(self, tmp_cache):
+        @tool("invalid arg test")
+        def _test_exec_invalid_arg(x: str) -> str:
+            return x
+
+        with pytest.raises(ValueError) as exc_info:
+            asyncio.run(execute("_test_exec_invalid_arg", {"y": "hi"}))
+        assert "Known args: x" in str(exc_info.value)
+
+    def test_unexpected_return_type_raises_type_error(self, tmp_cache):
+        @tool("unexpected return test")
+        def _test_exec_unexpected_return() -> int:
+            return 42
+
+        with pytest.raises(TypeError) as exc_info:
+            asyncio.run(execute("_test_exec_unexpected_return", {}))
+        assert "Tool returned unexpected type" in str(exc_info.value)
+
+
+def test_clear_plugin_tools_keeps_framework():
+    # Register a framework tool
+    @tool("framework tool")
+    def _fw_tool() -> str:
+        return "fw"
+
+    @tool("user tool")
+    def _usr_tool() -> str:
+        return "usr"
+
+    tools = get_tools()
+    assert "_fw_tool" in tools
+    assert "_usr_tool" in tools
+
+    # Override their plugin fields manually
+    tools["_fw_tool"].plugin = "framework"
+    tools["_usr_tool"].plugin = "myplugin"
+
+    removed = _clear_plugin_tools()
+    assert "_usr_tool" in removed
+    assert "_fw_tool" not in removed
+    assert "_fw_tool" in tools
+    assert "_usr_tool" not in tools
+
+    # Clean up _fw_tool manually
+    if "_fw_tool" in tools:
+        del tools["_fw_tool"]

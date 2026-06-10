@@ -29,3 +29,27 @@ class TestHandles:
     def test_empty(self, tmp_cache):
         result = handles()
         assert "No cached outputs" in result
+
+    def test_filter(self, tmp_cache):
+        h1 = store("apple", "x")
+        h2 = store("banana", "y")
+        result = handles(filter="app")
+        assert h1 in result
+        assert h2 not in result
+
+
+class TestReload:
+    def test_reload(self, monkeypatch):
+        import sys
+
+        bootstrap_mod = sys.modules["mcpipe.bootstrap"]
+        mock_summary = {"plugins_loaded": ["foo"], "transforms_loaded": ["bar"]}
+        monkeypatch.setattr(bootstrap_mod, "reload_plugins", lambda: mock_summary)
+
+        import json
+
+        from mcpipe.framework import reload
+
+        res = reload()
+        parsed = json.loads(res)
+        assert parsed == mock_summary

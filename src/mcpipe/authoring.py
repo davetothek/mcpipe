@@ -33,8 +33,15 @@ def _validate_code(content: str) -> None:
     # and might be used accidentally or maliciously. Authors should prefer
     # using mcpipe.Cmd for subprocess execution.
     BANNED = {
-        "os", "subprocess", "shutil", "socket", "requests",
-        "urllib", "builtins", "importlib", "sys",
+        "os",
+        "subprocess",
+        "shutil",
+        "socket",
+        "requests",
+        "urllib",
+        "builtins",
+        "importlib",
+        "sys",
     }
 
     for node in ast.walk(tree):
@@ -58,6 +65,7 @@ def _validate_code(content: str) -> None:
                 name = fn.attr
             if name in _BANNED_CALLS:
                 raise ValueError(f"Call to forbidden function: {name}()")
+
 
 # ---------------------------------------------------------------------------
 # Authoring guide — injected into tool descriptions and returned by help tool
@@ -242,9 +250,7 @@ def json_only(lines: list[str]) -> list[str]:
     meta_params=False,
 )
 def authoring_help(
-    topic: Annotated[
-        str, "Topic: 'plugin', 'transform', or 'both'"
-    ] = "both",
+    topic: Annotated[str, "Topic: 'plugin', 'transform', or 'both'"] = "both",
 ) -> str:
     if topic == "plugin":
         return _PLUGIN_GUIDE
@@ -348,8 +354,7 @@ def write_plugin(
 
     action = "updated" if existed else "created"
     return (
-        f"Plugin '{name}' {action} at {path}\n"
-        f"Call `reload` to register the new tools."
+        f"Plugin '{name}' {action} at {path}\nCall `reload` to register the new tools."
     )
 
 
@@ -402,8 +407,7 @@ def delete_plugin(
         return f"Error: plugin '{name}' not found at {path}"
     path.unlink()
     return (
-        f"Plugin '{name}' deleted from {path}\n"
-        f"Call `reload` to unregister its tools."
+        f"Plugin '{name}' deleted from {path}\nCall `reload` to unregister its tools."
     )
 
 

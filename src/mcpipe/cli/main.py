@@ -26,8 +26,7 @@ async def _run(opts: Opts) -> int:
     transforms: list[TransformStep] | None = None
     if opts.transforms:
         transforms = [
-            TransformStep(name=name, params=params)
-            for name, params in opts.transforms
+            TransformStep(name=name, params=params) for name, params in opts.transforms
         ]
         _log.debug("transforms: %s", transforms)
 
@@ -69,8 +68,7 @@ async def _view(opts: Opts) -> int:
 
     if opts.transforms:
         steps = [
-            TransformStep(name=name, params=params)
-            for name, params in opts.transforms
+            TransformStep(name=name, params=params) for name, params in opts.transforms
         ]
         _log.debug("transforms: %s", steps)
         try:
@@ -115,10 +113,7 @@ async def _list(opts: Opts) -> int:
         from mcpipe.transform import get_transforms
 
         transforms = get_transforms()
-        filtered = {
-            n: e for n, e in transforms.items()
-            if not filt or filt in n
-        }
+        filtered = {n: e for n, e in transforms.items() if not filt or filt in n}
         if filtered:
             print("\n  Transforms\n")
             for name, entry in sorted(filtered.items()):
@@ -155,5 +150,5 @@ async def main(argv: list[str] | None = None) -> int:
 
             await serve(transport=opts.transport)
             return 0
-        case _:
+        case _:  # pragma: no cover
             return 1

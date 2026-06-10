@@ -96,9 +96,7 @@ class PathSettings:
             except ValueError:
                 continue
         roots_str = ", ".join(str(r) for r in self.get_roots())
-        raise ValueError(
-            f"Path '{resolved}' is outside allowed roots: {roots_str}"
-        )
+        raise ValueError(f"Path '{resolved}' is outside allowed roots: {roots_str}")
 
 
 @dataclass(slots=True)

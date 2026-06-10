@@ -74,13 +74,13 @@ def main() -> int:
 
     # Parse headings from the full file (excluding the TOC block itself)
     before_toc = text[:start_idx]
-    after_toc = text[end_idx + len(_TOC_END):]
+    after_toc = text[end_idx + len(_TOC_END) :]
     content_lines = (before_toc + after_toc).splitlines()
 
     toc = _generate_toc(content_lines)
     new_block = f"{_TOC_START}\n{toc}\n{_TOC_END}"
 
-    updated = text[:start_idx] + new_block + text[end_idx + len(_TOC_END):]
+    updated = text[:start_idx] + new_block + text[end_idx + len(_TOC_END) :]
 
     if updated != text:
         README.write_text(updated)

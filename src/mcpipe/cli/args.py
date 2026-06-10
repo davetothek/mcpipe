@@ -99,26 +99,33 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_p.add_argument("tool", help="tool name")
     run_p.add_argument(
-        "tool_remainder", nargs=argparse.REMAINDER,
+        "tool_remainder",
+        nargs=argparse.REMAINDER,
         help=argparse.SUPPRESS,
     )
 
     # -- list --
     list_p = sub.add_parser("list", help="list available tools and transforms")
     list_p.add_argument(
-        "filter", nargs="?", default=None,
+        "filter",
+        nargs="?",
+        default=None,
         help="substring filter on tool/transform names",
     )
     list_p.add_argument(
-        "-p", "--plugin", default=None,
+        "-p",
+        "--plugin",
+        default=None,
         help="show only tools from this plugin",
     )
     list_p.add_argument(
-        "--tools-only", action="store_true",
+        "--tools-only",
+        action="store_true",
         help="show only tools (hide transforms)",
     )
     list_p.add_argument(
-        "--transforms-only", action="store_true",
+        "--transforms-only",
+        action="store_true",
         help="show only transforms (hide tools)",
     )
 
@@ -244,7 +251,7 @@ def parse_argv(argv: list[str]) -> Opts:
         opts.transforms_only = ns.transforms_only
     elif ns.command == "server":
         opts.transport = ns.transport
-    elif remainder:
+    elif remainder:  # pragma: no cover
         parser.error(f"unrecognized arguments: {' '.join(remainder)}")
 
     return opts

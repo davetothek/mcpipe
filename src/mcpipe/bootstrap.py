@@ -105,7 +105,6 @@ def bootstrap() -> None:
     # Framework tools
     __import__("mcpipe.framework")
 
-
     if get_config().authoring.enabled:
         __import__("mcpipe.authoring")
     else:
@@ -144,7 +143,6 @@ def reload_plugins() -> dict[str, list[str]]:
     # if the module was never imported.  For already-imported modules
     # __import__ is a no-op — re-registration is handled by reload.
     __import__("mcpipe.framework")
-
 
     if get_config().authoring.enabled:
         __import__("mcpipe.authoring")

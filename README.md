@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/mcpipe)](https://pypi.org/project/mcpipe/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![CI](https://github.com/davetothek/mcpipe/actions/workflows/ci.yml/badge.svg)](https://github.com/davetothek/mcpipe/actions/workflows/ci.yml)
-![coverage](https://img.shields.io/badge/coverage-47%25-yellow)
+![coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
 
 <!--toc:start-->
 - [How it works](#how-it-works)

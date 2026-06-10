@@ -271,6 +271,7 @@ def fs_rm(
     if p.is_dir():
         if recursive:
             import shutil
+
             shutil.rmtree(p)
         else:
             p.rmdir()  # fails if not empty
@@ -309,6 +310,7 @@ def fs_cp(
     recursive: Annotated[bool, "Copy directories recursively"] = False,
 ) -> str:
     import shutil
+
     s = _resolve(src)
     d = _resolve(dst)
     if not s.exists():

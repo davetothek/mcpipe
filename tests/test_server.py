@@ -173,24 +173,228 @@ class TestDispatch:
 
     def test_tools_call_unknown_tool(self, tmp_cache):
         resp = asyncio.run(
-            _dispatch({
-                "jsonrpc": "2.0",
-                "id": 5,
-                "method": "tools/call",
-                "params": {"name": "no_such_tool_xyz"},
-            })
+            _dispatch(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 5,
+                    "method": "tools/call",
+                    "params": {"name": "no_such_tool_xyz"},
+                }
+            )
         )
         assert resp is not None
         assert "error" in resp
 
     def test_tools_call_missing_name(self, tmp_cache):
         resp = asyncio.run(
-            _dispatch({
-                "jsonrpc": "2.0",
-                "id": 6,
-                "method": "tools/call",
-                "params": {},
-            })
+            _dispatch(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 6,
+                    "method": "tools/call",
+                    "params": {},
+                }
+            )
         )
         assert resp is not None
         assert "error" in resp
+
+
+class TestServerHelpers:
+    def test_inject_meta_params_no_param_transform(self, monkeypatch):
+        from mcpipe.transform import _TransformEntry
+
+        # Setup mock transform registry with 0-param transform
+        mock_entry = _TransformEntry(
+            func=lambda lines: lines,
+            description="No param transform",
+            param_schema={"properties": {}},
+        )
+        import mcpipe.server
+
+        monkeypatch.setattr(
+            mcpipe.server, "get_transforms", lambda: {"noparam": mock_entry}
+        )
+
+        schema = {"properties": {"arg": {"type": "string"}}}
+        injected = mcpipe.server._inject_meta_params(schema)
+        assert injected["properties"]["_noparam"]["type"] == "boolean"
+        assert "No param transform" in injected["properties"]["_noparam"]["description"]
+
+    def test_extract_transforms_all_cases(self):
+        from mcpipe.server import _extract_transforms
+        from mcpipe.transform import TransformStep
+
+        args = {
+            "_search": "hello",
+            "_limit": "15",
+            "_offset": "5",
+            "_custom": "val",
+            "normal": 42,
+        }
+        tool_args, steps = _extract_transforms(args)
+        assert tool_args == {"normal": 42}
+        assert steps == [
+            TransformStep("search", {"pattern": "hello"}),
+            TransformStep("limit", {"n": 15}),
+            TransformStep("offset", {"n": 5}),
+            TransformStep("custom", {"_positional": "val"}),
+        ]
+
+    def test_tool_output_to_result_inline(self):
+        from mcpipe.plugin import ToolOutput
+        from mcpipe.server import _tool_output_to_result
+
+        out = ToolOutput(
+            handle="h",
+            total_lines=2,
+            text="a\nb",
+            preview=None,
+            is_error=False,
+        )
+        res = _tool_output_to_result(out)
+        assert res["isError"] is False
+        assert res["content"] == [{"type": "text", "text": "a\nb"}]
+
+    def test_tool_output_to_result_cached(self):
+        from mcpipe.plugin import ToolOutput
+        from mcpipe.server import _tool_output_to_result
+
+        out = ToolOutput(
+            handle="h",
+            total_lines=2,
+            text=None,
+            preview="preview-lines",
+            is_error=True,
+        )
+        res = _tool_output_to_result(out)
+        assert res["isError"] is True
+        text = res["content"][0]["text"]
+        assert "Output cached as 'h'" in text
+        assert "Preview:\npreview-lines" in text
+
+        # Without preview
+        out2 = ToolOutput(
+            handle="h",
+            total_lines=2,
+            text=None,
+            preview=None,
+            is_error=False,
+        )
+        res2 = _tool_output_to_result(out2)
+        assert "Preview:" not in res2["content"][0]["text"]
+
+    def test_handle_tools_call_execution(self, monkeypatch):
+        from mcpipe.plugin import ToolOutput
+        from mcpipe.server import _handle_tools_call
+
+        # Mock execute to return success
+        async def mock_execute(name, tool_args, transforms=None):
+            return ToolOutput("h", total_lines=1, text="ok")
+
+        import mcpipe.server
+
+        monkeypatch.setattr(mcpipe.server, "execute", mock_execute)
+
+        # Test valid call
+        resp = asyncio.run(
+            _handle_tools_call(1, {"name": "view", "arguments": {"handle": "h"}})
+        )
+        assert resp["result"]["content"][0]["text"] == "ok"
+
+        # Mock execute raising ValueError
+        async def mock_execute_raise(name, tool_args, transforms=None):
+            raise ValueError("Invalid value passed")
+
+        monkeypatch.setattr(mcpipe.server, "execute", mock_execute_raise)
+        resp2 = asyncio.run(
+            _handle_tools_call(2, {"name": "view", "arguments": {"handle": "h"}})
+        )
+        assert "error" in resp2
+        assert "Invalid value passed" in resp2["error"]["message"]
+
+    def test_write_protocol(self):
+        from unittest.mock import MagicMock
+
+        from mcpipe.server import _WriteProtocol
+
+        proto = _WriteProtocol()
+        proto.connection_made(MagicMock())
+        proto.connection_lost(None)
+
+    def test_serve_unsupported_transport(self):
+        import pytest
+
+        from mcpipe.server import serve
+
+        with pytest.raises(ValueError) as exc:
+            asyncio.run(serve(transport="http"))
+        assert "Unsupported transport" in str(exc.value)
+
+    def test_serve_loop(self, monkeypatch):
+        import json
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from mcpipe.server import serve
+
+        # We will mock loop.connect_read_pipe and loop.connect_write_pipe
+        # to simulate input lines and capture output.
+        mock_loop = MagicMock()
+        monkeypatch.setattr(asyncio, "get_running_loop", lambda: mock_loop)
+
+        mock_reader = AsyncMock()
+
+        # Setup sequence of input lines:
+        # 1. empty line (should be ignored)
+        # 2. invalid JSON
+        # 3. valid ping request
+        # 4. EOF (empty bytes)
+        mock_reader.readline.side_effect = [
+            b"\n",
+            b"not-json\n",
+            b'{"jsonrpc": "2.0", "id": 42, "method": "ping"}\n',
+            b"",
+        ]
+
+        # We patch StreamReaderProtocol to bind our mock_reader
+        class FakeStreamReaderProtocol:
+            def __init__(self, reader):
+                pass
+
+            def connection_made(self, transport):
+                pass
+
+        monkeypatch.setattr(asyncio, "StreamReader", lambda: mock_reader)
+        monkeypatch.setattr(asyncio, "StreamReaderProtocol", FakeStreamReaderProtocol)
+
+        mock_loop.connect_read_pipe = AsyncMock(
+            return_value=(MagicMock(), FakeStreamReaderProtocol(None))
+        )
+
+        # Capture stdout writes
+        written_data = []
+        mock_transport = MagicMock()
+
+        def write_bytes(data):
+            written_data.append(data)
+
+        mock_transport.write = write_bytes
+
+        mock_loop.connect_write_pipe = AsyncMock(
+            return_value=(mock_transport, MagicMock())
+        )
+
+        with patch("mcpipe.server.bootstrap") as mock_bootstrap:
+            asyncio.run(serve())
+            mock_bootstrap.assert_called_once()
+
+        assert len(written_data) == 2
+        # First write is parse error for "not-json"
+        res1 = json.loads(written_data[0].decode().strip())
+        assert "error" in res1
+        assert res1["error"]["code"] == ErrorCode.PARSE_ERROR.value
+
+        # Second write is success response for ping
+        res2 = json.loads(written_data[1].decode().strip())
+        assert res2["id"] == 42
+        assert res2["result"] == {}

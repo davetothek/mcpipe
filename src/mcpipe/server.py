@@ -310,4 +310,3 @@ async def serve(*, transport: str = "stdio") -> None:
         response = await _dispatch(msg)
         if response is not None:
             write_transport.write((json.dumps(response) + "\n").encode())
-

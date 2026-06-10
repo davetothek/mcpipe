@@ -57,8 +57,6 @@ def _clear_transforms() -> set[str]:
     return removed
 
 
-
-
 def transform(description: str) -> Callable:
     """Register a function as a transform.
 

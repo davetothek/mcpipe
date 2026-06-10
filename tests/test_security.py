@@ -39,7 +39,8 @@ class TestAuthoringSecurity:
     def test_blocks_from_imports(self):
         code = "from subprocess import Popen\ndef tool(): pass"
         with pytest.raises(
-            ValueError, match="Import from forbidden module: subprocess",
+            ValueError,
+            match="Import from forbidden module: subprocess",
         ):
             _validate_code(code)
 
@@ -80,8 +81,7 @@ class TestAuthoringSecurity:
 
     def test_allows_safe_imports(self):
         code = (
-            "import json\nimport math\n"
-            "from typing import Annotated\ndef tool(): pass"
+            "import json\nimport math\nfrom typing import Annotated\ndef tool(): pass"
         )
         # Should not raise
         _validate_code(code)

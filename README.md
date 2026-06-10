@@ -1,7 +1,10 @@
 # mcpipe
 
-![license](https://img.shields.io/badge/license-MIT-blue)
-![coverage](https://img.shields.io/badge/coverage-46%25-yellow)
+[![PyPI](https://img.shields.io/pypi/v/mcpipe)](https://pypi.org/project/mcpipe/)
+[![Python](https://img.shields.io/pypi/pyversions/mcpipe)](https://pypi.org/project/mcpipe/)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![CI](https://github.com/davidKristiansen/mcpipe/actions/workflows/ci.yml/badge.svg)](https://github.com/davidKristiansen/mcpipe/actions/workflows/ci.yml)
+![coverage](https://img.shields.io/badge/coverage-47%25-yellow)
 
 <!--toc:start-->
 - [How it works](#how-it-works)
@@ -9,6 +12,7 @@
 - [Usage](#usage)
   - [MCP server (for LLM clients)](#mcp-server-for-llm-clients)
   - [CLI](#cli)
+- [Configuration](#configuration)
 - [Built-in plugins](#built-in-plugins)
   - [Git](#git)
   - [Docker](#docker)
@@ -49,9 +53,9 @@ Zero dependencies. Python 3.12+.
 
 ```
 LLM calls:  git_log(since="1week")
-Returns:    { handle: "git_log_1716000000", lines: 847, preview: "..." }
+Returns:    { handle: "git_log_1716000000_a1b2c3d4", lines: 847, preview: "..." }
 
-LLM calls:  view(handle="git_log_1716000000", _search="auth")
+LLM calls:  view(handle="git_log_1716000000_a1b2c3d4", _search="auth")
 Returns:    matching lines only
 ```
 
@@ -60,7 +64,11 @@ One tool produces. Generic tools consume. Plugins don't implement search or pagi
 ## Install
 
 ```bash
-uv pip install .
+# From PyPI
+pip install mcpipe
+
+# From source
+pip install .
 ```
 
 ## Usage
@@ -81,6 +89,35 @@ mcpipe run docker_ps all=true
 mcpipe view <handle> -T search pattern="error"
 mcpipe list
 ```
+
+## Configuration
+
+mcpipe reads configuration from (highest priority first):
+
+1. **Environment variables** (`MCPIPE_*`)
+2. **Config file**: `$XDG_CONFIG_HOME/mcpipe/config.toml` (default: `~/.config/mcpipe/config.toml`)
+3. **Defaults**
+
+```toml
+[cache]
+dir = "/custom/cache/path"     # default: $XDG_RUNTIME_DIR/mcpipe
+ttl = 7200                     # seconds, default: 3600
+inline_threshold = 100         # lines, default: 50
+
+[authoring]
+enabled = true                 # default: false
+
+[paths]
+allowed = ["/home/user/code", "/data"]  # default: CWD only
+```
+
+| Environment variable | Config key | Description |
+|---------------------|------------|-------------|
+| `MCPIPE_CACHE_DIR` | `cache.dir` | Cache directory |
+| `MCPIPE_CACHE_TTL` | `cache.ttl` | Default cache TTL (seconds) |
+| `MCPIPE_INLINE_THRESHOLD` | `cache.inline_threshold` | Lines below which output is inline |
+| `MCPIPE_ENABLE_AUTHORING` | `authoring.enabled` | Enable authoring tools (`1` to enable) |
+| `FS_ROOTS` | `paths.allowed` | Colon-separated allowed filesystem roots |
 
 ## Built-in plugins
 
@@ -107,8 +144,8 @@ mcpipe list
 `fs_read`, `fs_ls`, `fs_stat`, `fs_find`, `fs_grep`, `fs_roots`,
 `fs_write`, `fs_mkdir`, `fs_rm`, `fs_mv`, `fs_cp`
 
-Access is restricted to allowed directory trees. Set `FS_ROOTS` to a colon-separated
-list of paths, or leave it unset to allow only the working directory.
+Access is restricted to allowed directory trees. Configure via `paths.allowed`
+in your config file, or set `FS_ROOTS` to a colon-separated list of paths.
 
 ## Transforms
 
@@ -264,9 +301,6 @@ Return `Cmd` to run a subprocess, or `str` for direct output. Type hints generat
 the MCP input schema automatically. Use `Annotated[type, "description"]` to add
 descriptions to parameters â€” these appear in the tool's JSON Schema.
 
-Tool arguments are passed directly as keyword arguments to the function.
-String values are sanitized first (`~` and `$ENV` expanded).
-
 ### Pure Python tools
 
 Return `str` instead of `Cmd` for tools that don't need a subprocess:
@@ -358,6 +392,9 @@ An LLM connected to mcpipe can create its own tools and transforms at runtime â€
 no restarts, no manual file editing. This is the core design: if a tool doesn't
 exist yet, the LLM writes it, reloads, and uses it immediately.
 
+Authoring tools are disabled by default. Enable with `authoring.enabled = true`
+in your config or `MCPIPE_ENABLE_AUTHORING=1`.
+
 ### How it works
 
 mcpipe exposes framework tools for managing user extensions:
@@ -394,12 +431,17 @@ is already available.
 ## Development
 
 ```bash
-uv run poe hooks    # install git hooks
-uv run poe check    # lint + typecheck + tests
-uv run poe test     # tests only
-uv run poe lint     # ruff
-uv run poe format   # ruff format
+uv sync --dev          # install deps
+uv run poe hooks       # install git hooks
+uv run poe check       # lint + typecheck + tests
+uv run poe test        # tests only
+uv run poe lint        # ruff
+uv run poe format      # ruff format
+uv run poe release     # bump version, changelog, tag, push
 ```
+
+Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
+Versioning and changelogs are managed by [commitizen](https://commitizen-tools.github.io/commitizen/).
 
 ## License
 

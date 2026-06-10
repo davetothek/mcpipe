@@ -7,18 +7,57 @@ $XDG_CONFIG_HOME/mcpipe/{plugins,transforms}/ and picked up by reload.
 
 from __future__ import annotations
 
+import ast
 import json
 from typing import Annotated
 
-from mcpipe.config import (
-    ensure_user_dirs,
-    user_plugins_dir,
-    user_transforms_dir,
-)
+from mcpipe.config import get_config
 from mcpipe.log import get_logger
 from mcpipe.plugin import tool
 
 _log = get_logger("authoring")
+
+
+def _validate_code(content: str) -> None:
+    """Basic AST validation to catch syntax errors and block a few obvious modules.
+
+    This is a soft guardrail, not a secure sandbox. Built-in plugins are not
+    subject to this check.
+    """
+    try:
+        tree = ast.parse(content)
+    except SyntaxError as e:
+        raise ValueError(f"Syntax error in Python code: {e}") from None
+
+    # Block some obvious things that are rarely needed in simple tools/transforms
+    # and might be used accidentally or maliciously. Authors should prefer
+    # using mcpipe.Cmd for subprocess execution.
+    BANNED = {
+        "os", "subprocess", "shutil", "socket", "requests",
+        "urllib", "builtins", "importlib", "sys",
+    }
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".")[0] in BANNED:
+                    raise ValueError(f"Import of forbidden module: {alias.name}")
+        elif isinstance(node, ast.ImportFrom):
+            if node.module and node.module.split(".")[0] in BANNED:
+                raise ValueError(f"Import from forbidden module: {node.module}")
+
+    # Block exec/eval/compile/__import__ calls
+    _BANNED_CALLS = frozenset({"exec", "eval", "compile", "__import__"})
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            fn = node.func
+            name = None
+            if isinstance(fn, ast.Name):
+                name = fn.id
+            elif isinstance(fn, ast.Attribute):
+                name = fn.attr
+            if name in _BANNED_CALLS:
+                raise ValueError(f"Call to forbidden function: {name}()")
 
 # ---------------------------------------------------------------------------
 # Authoring guide — injected into tool descriptions and returned by help tool
@@ -227,8 +266,9 @@ def authoring_help(
     meta_params=False,
 )
 def list_user_extensions() -> str:
-    plugins_dir = user_plugins_dir()
-    transforms_dir = user_transforms_dir()
+    cfg = get_config()
+    plugins_dir = cfg.user_plugins_dir
+    transforms_dir = cfg.user_transforms_dir
 
     result: dict[str, list[str] | str] = {"plugins": [], "transforms": []}
 
@@ -270,7 +310,8 @@ def read_extension(
     name: Annotated[str, "Filename without .py (e.g. 'kubectl')"],
     kind: Annotated[str, "'plugin' or 'transform'"] = "plugin",
 ) -> str:
-    directory = user_plugins_dir() if kind == "plugin" else user_transforms_dir()
+    cfg = get_config()
+    directory = cfg.user_plugins_dir if kind == "plugin" else cfg.user_transforms_dir
     path = directory / f"{name}.py"
 
     if not path.exists():
@@ -298,8 +339,10 @@ def write_plugin(
     name: Annotated[str, "Filename without .py (e.g. 'kubectl')"],
     content: Annotated[str, "Complete Python source code for the plugin"],
 ) -> str:
-    ensure_user_dirs()
-    path = user_plugins_dir() / f"{name}.py"
+    _validate_code(content)
+    cfg = get_config()
+    cfg.ensure_user_dirs()
+    path = cfg.user_plugins_dir / f"{name}.py"
     existed = path.exists()
     path.write_text(content, encoding="utf-8")
 
@@ -324,8 +367,10 @@ def write_transform(
     name: Annotated[str, "Filename without .py (e.g. 'sort')"],
     content: Annotated[str, "Complete Python source code for the transform"],
 ) -> str:
-    ensure_user_dirs()
-    path = user_transforms_dir() / f"{name}.py"
+    _validate_code(content)
+    cfg = get_config()
+    cfg.ensure_user_dirs()
+    path = cfg.user_transforms_dir / f"{name}.py"
     existed = path.exists()
     path.write_text(content, encoding="utf-8")
 
@@ -352,7 +397,7 @@ def write_transform(
 def delete_plugin(
     name: Annotated[str, "Filename without .py (e.g. 'kubectl')"],
 ) -> str:
-    path = user_plugins_dir() / f"{name}.py"
+    path = get_config().user_plugins_dir / f"{name}.py"
     if not path.exists():
         return f"Error: plugin '{name}' not found at {path}"
     path.unlink()
@@ -373,7 +418,7 @@ def delete_plugin(
 def delete_transform(
     name: Annotated[str, "Filename without .py (e.g. 'sort')"],
 ) -> str:
-    path = user_transforms_dir() / f"{name}.py"
+    path = get_config().user_transforms_dir / f"{name}.py"
     if not path.exists():
         return f"Error: transform '{name}' not found at {path}"
     path.unlink()

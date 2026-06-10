@@ -9,12 +9,11 @@ User transforms with the same name as a builtin simply overwrite it
 
 from __future__ import annotations
 
-import inspect
-import typing
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Annotated, Any, get_type_hints
+from typing import Any
 
+from mcpipe._schema import build_schema
 from mcpipe.log import get_logger
 
 _log = get_logger("transform")
@@ -58,51 +57,6 @@ def _clear_transforms() -> set[str]:
     return removed
 
 
-_PY_TO_JSON: dict[type, str] = {
-    str: "string",
-    int: "integer",
-    float: "number",
-    bool: "boolean",
-}
-
-
-def _build_param_schema(func: Callable) -> dict[str, Any]:
-    """Build JSON schema for transform params (excludes 'lines' arg)."""
-    hints = get_type_hints(func, include_extras=True)
-    sig = inspect.signature(func)
-    properties: dict[str, Any] = {}
-    required: list[str] = []
-
-    for name, param in sig.parameters.items():
-        if name == "lines":
-            continue
-        hint = hints.get(name, str)
-        description = None
-
-        origin = typing.get_origin(hint)
-        if origin is Annotated:
-            args = typing.get_args(hint)
-            hint = args[0]
-            for meta in args[1:]:
-                if isinstance(meta, str):
-                    description = meta
-                    break
-
-        json_type = _PY_TO_JSON.get(hint, "string")
-        prop: dict[str, Any] = {"type": json_type}
-        if description:
-            prop["description"] = description
-        if param.default is not inspect.Parameter.empty:
-            prop["default"] = param.default
-        else:
-            required.append(name)
-
-        properties[name] = prop
-
-    schema: dict[str, Any] = {"type": "object", "properties": properties}
-    if required:
-        schema["required"] = required
-    return schema
 
 
 def transform(description: str) -> Callable:
@@ -121,7 +75,7 @@ def transform(description: str) -> Callable:
         entry = _TransformEntry(
             func=func,
             description=description,
-            param_schema=_build_param_schema(func),
+            param_schema=build_schema(func, skip=frozenset({"lines"})),
         )
         _REGISTRY[name] = entry
         if existing:

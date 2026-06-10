@@ -21,14 +21,10 @@ from types import ModuleType
 import mcpipe.plugins as _plugins_pkg
 import mcpipe.transforms as _transforms_pkg
 from mcpipe.cache import evict_expired
-from mcpipe.config import user_plugins_dir, user_transforms_dir
+from mcpipe.config import get_config
 from mcpipe.log import get_logger
 from mcpipe.plugin import _clear_plugin_tools, get_tools
 from mcpipe.transform import _clear_transforms, get_transforms
-
-# Import framework modules to trigger @tool registration at import time.
-__import__("mcpipe.framework")
-__import__("mcpipe.authoring")
 
 _log = get_logger("bootstrap")
 
@@ -106,14 +102,26 @@ def bootstrap() -> None:
     """Import all plugins and transforms, triggering registration."""
     evict_expired()
 
+    # Framework tools
+    __import__("mcpipe.framework")
+
+
+    if get_config().authoring.enabled:
+        __import__("mcpipe.authoring")
+    else:
+        _log.info(
+            "authoring tools disabled"
+            " (set authoring.enabled in config or MCPIPE_ENABLE_AUTHORING=1)",
+        )
+
     # Built-in transforms, then user transforms
     _discover_and_load(_transforms_pkg, "mcpipe.transforms")
-    _discover_user_dir(user_transforms_dir(), "mcpipe_user.transforms")
-    _log.info("transforms registered: %d", len(get_transforms()))
+    cfg = get_config()
+    _discover_user_dir(cfg.user_transforms_dir, "mcpipe_user.transforms")
 
     # Built-in plugins, then user plugins
     _discover_and_load(_plugins_pkg, "mcpipe.plugins")
-    _discover_user_dir(user_plugins_dir(), "mcpipe_user.plugins")
+    _discover_user_dir(cfg.user_plugins_dir, "mcpipe_user.plugins")
     _log.info("total tools registered: %d", len(get_tools()))
 
 
@@ -131,20 +139,39 @@ def reload_plugins() -> dict[str, list[str]]:
     _clear_plugin_tools()
     _clear_transforms()
 
+    # Framework tools survive _clear_plugin_tools (they're in
+    # _FRAMEWORK_PLUGINS), but authoring tools need re-registration
+    # if the module was never imported.  For already-imported modules
+    # __import__ is a no-op — re-registration is handled by reload.
+    __import__("mcpipe.framework")
+
+
+    if get_config().authoring.enabled:
+        __import__("mcpipe.authoring")
+
     # Built-in
     _discover_and_load(
-        _transforms_pkg, "mcpipe.transforms", reload=True,
+        _transforms_pkg,
+        "mcpipe.transforms",
+        reload=True,
     )
     _discover_and_load(
-        _plugins_pkg, "mcpipe.plugins", reload=True,
+        _plugins_pkg,
+        "mcpipe.plugins",
+        reload=True,
     )
 
     # User
+    cfg = get_config()
     _discover_user_dir(
-        user_transforms_dir(), "mcpipe_user.transforms", reload=True,
+        cfg.user_transforms_dir,
+        "mcpipe_user.transforms",
+        reload=True,
     )
     _discover_user_dir(
-        user_plugins_dir(), "mcpipe_user.plugins", reload=True,
+        cfg.user_plugins_dir,
+        "mcpipe_user.plugins",
+        reload=True,
     )
 
     new_tools = set(get_tools().keys())

@@ -18,7 +18,7 @@ The name is "MCP" + "pipe" — Unix-style piping for the Model Context Protocol.
 
 ## How it works (LLM perspective)
 
-A plugin tool runs, its output is cached to `/tmp/mcpipe/`, and the LLM gets back
+A plugin tool runs, its output is cached to a per-user directory, and the LLM gets back
 a handle + summary. The LLM then uses framework tools to explore the cached output.
 
 ```
@@ -42,7 +42,7 @@ One tool produces. Generic tools consume. Plugins never implement search or pagi
 │stdio/cli│     └──────────┘     └──────┘     └────────────┘
 └─────────┘          │               │              │
                 ┌────┴────┐     ┌────┴──────────┐   │ lines in → lines out
-                │ Plugins │     │ /tmp/mcpipe/   │   │ pure, composable
+                │ Plugins │     │ cache dir      │   │ pure, composable
                 │git, ... │     │ <name>_<ts>    │   │ cache never mutated
                 └─────────┘     └────────────────┘   │
                                      ▲          ┌────┴────────┐
@@ -101,14 +101,27 @@ Two ways in — both share the plugin registry and cache:
 - **CLI** (`cli/`) — parse argv, run tool, print output. For humans and scripts.
 - **MCP server** (`server.py`) — JSON-RPC over stdio. For LLM clients.
 
+### Configuration
+
+Configuration lives in `config.py`.  Resolution order (highest priority first):
+1. Environment variables (`MCPIPE_*`)
+2. Config file: `$XDG_CONFIG_HOME/mcpipe/config.toml`
+3. Compiled defaults
+
+Key settings:
+- `cache.dir` — cache directory (default: `$XDG_RUNTIME_DIR/mcpipe` or `/tmp/mcpipe-$UID`)
+- `cache.ttl` — default TTL in seconds (default: 3600)
+- `cache.inline_threshold` — lines below which output is returned inline (default: 50)
+- `authoring.enabled` — whether authoring tools are available (default: false)
+- `paths.allowed` — allowed filesystem roots for the filesystem plugin (default: CWD)
+
 ### Cache
 
-Output caching lives in `cache.py`. Writes to `/tmp/mcpipe/`, manages handles and TTL.
+Output caching lives in `cache.py`. Reads cache dir and TTL from config.
 
-### Cache
-
-- Location: `/tmp/mcpipe/`
-- Handle format: `<tool_name>_<unix_timestamp>` (e.g. `git_log_1716000000`)
+- Location: per-user directory from config (never hardcoded `/tmp/mcpipe`)
+- Handle format: `<tool_name>_<ns_timestamp>_<uuid8>` (e.g. `git_log_1716000000000_a1b2c3d4`)
+- Handle names are validated against `_HANDLE_RE` to prevent path traversal
 - Handles are descriptive — you can tell what produced it and when at a glance
 - TTL-based garbage collection cleans up old entries
 
@@ -143,25 +156,28 @@ mcpipe/
     __init__.py          # Public API: from mcpipe import tool, Cmd, bootstrap
     __main__.py          # Entrypoints: cli() and mcp() for console_scripts
     bootstrap.py         # Auto-discover & import all plugins (shared by CLI + MCP server)
+    config.py            # Configuration layer (TOML + env vars + defaults)
     plugin.py            # @tool decorator, Cmd, ToolOutput, execute, registry
     transform.py         # @transform decorator, TransformStep, apply_transforms, builtins
+    _schema.py           # Shared JSON Schema generation from function signatures
     cache.py             # File cache (handles, TTL, GC, CachedOutput with slice/search)
     server.py            # MCP stdio JSON-RPC server (initialize, tools/list, tools/call)
     framework.py         # Framework tools: view, handles, reload
+    authoring.py         # Authoring tools (write/read/delete plugin/transform) + AST validation
     log.py               # Delta-timestamp colored logging to stderr
     _version.py          # Version/appname from importlib.metadata
     types/               # Type definitions
       __init__.py        # Re-exports for internal use
-      protocol.py        # MCP wire types (JSON-RPC, Tool, ToolResult, Init)
-      _hints.py          # (reserved for future hints)
+      protocol.py        # MCP types (ErrorCode, Tool, ToolResult, Init)
     cli/                 # CLI entrypoint
       __init__.py
       args.py            # argv parsing, coercion
       main.py            # Entrypoint logic, wiring
-    plugins/             # Built-in plugins (git, docker, ...)
+    plugins/             # Built-in plugins (git, docker, filesystem)
       __init__.py
       git.py
       docker.py
+      filesystem.py
 ```
 
 ## CLI Usage
@@ -200,8 +216,9 @@ Plugins never see them.
 
 ### Arg sanitization
 
-`execute()` runs `os.path.expanduser` + `os.path.expandvars` on all string args
-before passing to the plugin. Both CLI and MCP benefit from this.
+`execute()` runs `os.path.expanduser` on all string args before passing to the
+plugin. `expandvars` was removed to prevent environment variable leakage from
+LLM-controlled tool arguments.
 
 ## Conventions
 

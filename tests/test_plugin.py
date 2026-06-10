@@ -7,11 +7,11 @@ from typing import Annotated
 
 import pytest
 
+from mcpipe._schema import build_schema
+from mcpipe.config import get_config
 from mcpipe.plugin import (
-    INLINE_THRESHOLD,
     Cmd,
     ToolOutput,
-    _build_schema,
     _make_preview,
     _sanitize_args,
     execute,
@@ -45,7 +45,7 @@ class TestBuildSchema:
         def fn(name: str, count: int, flag: bool = False):
             pass
 
-        schema = _build_schema(fn)
+        schema = build_schema(fn)
         assert schema["properties"]["name"]["type"] == "string"
         assert schema["properties"]["count"]["type"] == "integer"
         assert schema["properties"]["flag"]["type"] == "boolean"
@@ -56,14 +56,14 @@ class TestBuildSchema:
         def fn(path: Annotated[str, "Path to the file"]):
             pass
 
-        schema = _build_schema(fn)
+        schema = build_schema(fn)
         assert schema["properties"]["path"]["description"] == "Path to the file"
 
     def test_no_required_when_all_defaults(self):
         def fn(a: str = "x", b: int = 0):
             pass
 
-        schema = _build_schema(fn)
+        schema = build_schema(fn)
         assert "required" not in schema
 
 
@@ -137,12 +137,14 @@ class TestExecute:
     def test_large_output_not_inline(self, tmp_cache):
         @tool("large test")
         def _test_exec_large() -> str:
-            return "\n".join(f"line{i}" for i in range(INLINE_THRESHOLD + 10))
+            threshold = get_config().cache.inline_threshold
+            return "\n".join(f"line{i}" for i in range(threshold + 10))
 
         output = asyncio.run(execute("_test_exec_large", {}))
         assert not output.is_inline
         assert output.preview is not None
-        assert output.total_lines > INLINE_THRESHOLD
+        threshold = get_config().cache.inline_threshold
+        assert output.total_lines > threshold
 
     def test_cmd_echo(self, tmp_cache):
         @tool("cmd test")

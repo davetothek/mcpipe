@@ -6,9 +6,30 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
 dependencies = []
+keywords = ["mcp", "model-context-protocol", "llm", "plugin", "cli", "pipeline"]
+authors = [
+    { name = "David Kristiansen" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/davidKristiansen/mcpipe"
+Repository = "https://github.com/davidKristiansen/mcpipe"
+Issues = "https://github.com/davidKristiansen/mcpipe/issues"
+Changelog = "https://github.com/davidKristiansen/mcpipe/blob/main/CHANGELOG.md"
 
 [dependency-groups]
 dev = [
+    "commitizen>=4.6.0",
     "debugpy>=1.8.20",
     "poethepoet>=0.46.0",
     "pytest>=9.0.3",
@@ -82,8 +103,16 @@ lint = "ruff check . --fix"
 format = "ruff format ."
 typecheck = "ty check src tests"
 check  = { sequence = ["lint", "typecheck", "test"], help = "Run lint + typecheck + tests" }
-release = { help = "Full release workflow: bump version, generate changelog, merge to main, tag, and sync back", cmd = "bash scripts/release.sh" }
+release = { help = "Bump version, update changelog, tag, and push", cmd = "bash scripts/release.sh" }
 hooks = { help = "Install git hooks", cmd = "cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit" }
 clean = { help = "Remove build artifacts and cache files", cmd = "rm -rf dist/ build/ **/*.egg-info/ .cache/ htmlcov/ .ruff_cache/ .mypy_cache/ **/__pycache__/" }
 build = { help = "Build wheel and sdist", cmd = "uv build" }
 docs = { help = "Build HTML documentation", cmd = "bash scripts/docs.sh" }
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+tag_format = "v$version"
+version_scheme = "semver"
+version_provider = "pep621"
+update_changelog_on_bump = true
+changelog_file = "CHANGELOG.md"

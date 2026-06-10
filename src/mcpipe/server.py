@@ -179,8 +179,8 @@ def _tool_output_to_result(output: ToolOutput) -> dict[str, Any]:
         # Large output — return handle + summary
         summary = (
             f"Output cached as '{output.handle}' ({output.total_lines} lines).\n"
-            f'Use paginate(handle="{output.handle}") to read, '
-            f'or search(handle="{output.handle}", pattern="...") to filter.'
+            f'Use view(handle="{output.handle}") to read, '
+            f'or view(handle="{output.handle}", _search="...") to filter.'
         )
         if output.preview:
             summary += f"\n\nPreview:\n{output.preview}"
@@ -257,6 +257,16 @@ async def _dispatch(msg: dict[str, Any]) -> dict[str, Any] | None:
             )
 
 
+class _WriteProtocol(asyncio.Protocol):
+    """Minimal protocol for stdout write pipe."""
+
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
+        pass
+
+    def connection_lost(self, exc: Exception | None) -> None:
+        pass
+
+
 async def serve(*, transport: str = "stdio") -> None:
     """Run the MCP server.
 
@@ -269,20 +279,15 @@ async def serve(*, transport: str = "stdio") -> None:
     bootstrap()
     _log.info("MCP server ready (%s %s)", __appname__, __version__)
 
-    reader = asyncio.StreamReader()
-    protocol = asyncio.StreamReaderProtocol(reader)
-    await asyncio.get_event_loop().connect_read_pipe(lambda: protocol, sys.stdin)
+    loop = asyncio.get_running_loop()
 
-    loop = asyncio.get_event_loop()
+    reader = asyncio.StreamReader()
+    read_protocol = asyncio.StreamReaderProtocol(reader)
+    await loop.connect_read_pipe(lambda: read_protocol, sys.stdin)
+
     write_transport, _ = await loop.connect_write_pipe(
-        asyncio.streams.FlowControlMixin,
+        _WriteProtocol,
         sys.stdout,
-    )
-    writer = asyncio.StreamWriter(
-        write_transport,
-        protocol,
-        reader,
-        loop,
     )
 
     while True:
@@ -299,11 +304,10 @@ async def serve(*, transport: str = "stdio") -> None:
             msg = json.loads(line_str)
         except json.JSONDecodeError as exc:
             err = _error(None, ErrorCode.PARSE_ERROR, f"Invalid JSON: {exc}")
-            writer.write((json.dumps(err) + "\n").encode())
-            await writer.drain()
+            write_transport.write((json.dumps(err) + "\n").encode())
             continue
 
         response = await _dispatch(msg)
         if response is not None:
-            writer.write((json.dumps(response) + "\n").encode())
-            await writer.drain()
+            write_transport.write((json.dumps(response) + "\n").encode())
+

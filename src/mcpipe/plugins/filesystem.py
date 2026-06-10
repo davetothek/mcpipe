@@ -9,7 +9,6 @@ only the current working directory tree is allowed.
 
 from __future__ import annotations
 
-import os
 import stat
 import time
 from pathlib import Path
@@ -18,37 +17,17 @@ from typing import Annotated
 from mcpipe import Cmd, tool
 
 # ---------------------------------------------------------------------------
-# Roots — allowed directory trees.  Set FS_ROOTS env var to a colon-separated
-# list of absolute paths, or leave empty to allow only CWD.
+# Path resolution — delegates to config layer for allowed roots.
+# FS_ROOTS env var and paths.allowed in config.toml are both supported.
 # ---------------------------------------------------------------------------
-
-_roots: list[Path] | None = None
-
-
-def _get_roots() -> list[Path]:
-    """Return allowed root directories (resolved, cached)."""
-    global _roots
-    if _roots is None:
-        env = os.environ.get("FS_ROOTS", "")
-        if env:
-            _roots = [Path(p).resolve() for p in env.split(":") if p]
-        else:
-            _roots = [Path.cwd().resolve()]
-    return _roots
 
 
 def _resolve(path: str) -> Path:
     """Resolve a path and verify it falls under an allowed root."""
+    from mcpipe.config import get_config
+
     p = Path(path).expanduser().resolve()
-    roots = _get_roots()
-    for root in roots:
-        try:
-            p.relative_to(root)
-            return p
-        except ValueError:
-            continue
-    allowed = ", ".join(str(r) for r in roots)
-    raise ValueError(f"Access denied: '{p}' is outside allowed roots ({allowed})")
+    return get_config().paths.validate_path(p)
 
 
 def _fmt_size(size: int | float) -> str:
@@ -229,7 +208,9 @@ def fs_grep(
     idempotent=True,
 )
 def fs_roots() -> str:
-    roots = _get_roots()
+    from mcpipe.config import get_config
+
+    roots = get_config().paths.get_roots()
     return "\n".join(str(r) for r in roots)
 
 

@@ -11,11 +11,11 @@ from __future__ import annotations
 import asyncio
 import inspect
 import os
-import typing
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Annotated, Any, get_type_hints
+from typing import Any
 
+from mcpipe._schema import build_schema
 from mcpipe.cache import store
 from mcpipe.log import get_logger
 from mcpipe.transform import TransformStep, apply_transforms
@@ -26,10 +26,6 @@ _log = get_logger("plugin")
 # ---------------------------------------------------------------------------
 # Cmd — "run this as a subprocess"
 # ---------------------------------------------------------------------------
-
-# Output below this threshold is returned inline (full text in response).
-# All output is always cached regardless.
-INLINE_THRESHOLD = 50
 
 # Meta-param prefix — pipeline params use this to avoid collision with tool args.
 META_PREFIX = "_"
@@ -107,51 +103,6 @@ def _clear_plugin_tools() -> set[str]:
 # @tool decorator
 # ---------------------------------------------------------------------------
 
-_PY_TO_JSON: dict[type, str] = {
-    str: "string",
-    int: "integer",
-    float: "number",
-    bool: "boolean",
-}
-
-
-def _build_schema(func: Callable) -> dict[str, Any]:
-    """Generate JSON Schema from function signature + type hints."""
-    hints = get_type_hints(func, include_extras=True)
-    sig = inspect.signature(func)
-    properties: dict[str, Any] = {}
-    required: list[str] = []
-
-    for name, param in sig.parameters.items():
-        hint = hints.get(name, str)
-        description = None
-
-        # Unwrap Annotated[type, "description"]
-        origin = typing.get_origin(hint)
-        if origin is Annotated:
-            args = typing.get_args(hint)
-            hint = args[0]
-            for meta in args[1:]:
-                if isinstance(meta, str):
-                    description = meta
-                    break
-
-        json_type = _PY_TO_JSON.get(hint, "string")
-        prop: dict[str, Any] = {"type": json_type}
-        if description:
-            prop["description"] = description
-        if param.default is not inspect.Parameter.empty:
-            prop["default"] = param.default
-        else:
-            required.append(name)
-
-        properties[name] = prop
-
-    schema: dict[str, Any] = {"type": "object", "properties": properties}
-    if required:
-        schema["required"] = required
-    return schema
-
 
 def _caller_plugin_name() -> str:
     """Derive plugin name from the calling module.
@@ -196,7 +147,7 @@ def tool(
 
     def decorator[F: Callable[..., Cmd | str]](func: F) -> F:
         name: str = getattr(func, "__name__")  # noqa: B009
-        schema = _build_schema(func)
+        schema = build_schema(func)
 
         entry = _ToolEntry(
             func=func,
@@ -234,7 +185,7 @@ def _sanitize_args(args: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for key, value in args.items():
         if isinstance(value, str):
-            value = os.path.expandvars(os.path.expanduser(value))
+            value = os.path.expanduser(value)
         out[key] = value
     return out
 
@@ -326,7 +277,9 @@ async def execute(
             text=text,
         )
 
-    inline = line_count <= INLINE_THRESHOLD
+    from mcpipe.config import get_config
+
+    inline = line_count <= get_config().cache.inline_threshold
     _log.debug(
         "%s: %d lines, inline=%s",
         tool_name,

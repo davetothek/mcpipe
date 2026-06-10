@@ -1,7 +1,7 @@
-"""MCP wire protocol types.
+"""MCP protocol types.
 
-JSON-RPC 2.0 framing, tool definitions, content types, and the
-initialize handshake. Only server.py should import from here.
+Tool definitions, content types, error codes, and the initialize
+handshake.  Only server.py should import from here.
 """
 
 from __future__ import annotations
@@ -9,33 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
-
-# ---------------------------------------------------------------------------
-# JSON-RPC 2.0
-# ---------------------------------------------------------------------------
-
-
-@dataclass(slots=True)
-class JsonRpcRequest:
-    method: str
-    id: int | str | None = None
-    params: dict[str, Any] | None = None
-    jsonrpc: str = "2.0"
-
-
-@dataclass(slots=True)
-class JsonRpcResponse:
-    id: int | str | None
-    result: dict[str, Any] | None = None
-    error: JsonRpcError | None = None
-    jsonrpc: str = "2.0"
-
-
-@dataclass(slots=True)
-class JsonRpcError:
-    code: int
-    message: str
-    data: Any | None = None
 
 
 class ErrorCode(int, Enum):

@@ -22,10 +22,10 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/davidKristiansen/mcpipe"
-Repository = "https://github.com/davidKristiansen/mcpipe"
-Issues = "https://github.com/davidKristiansen/mcpipe/issues"
-Changelog = "https://github.com/davidKristiansen/mcpipe/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/davetothek/mcpipe"
+Repository = "https://github.com/davetothek/mcpipe"
+Issues = "https://github.com/davetothek/mcpipe/issues"
+Changelog = "https://github.com/davetothek/mcpipe/blob/main/CHANGELOG.md"
 
 [dependency-groups]
 dev = [

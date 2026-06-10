@@ -3,7 +3,7 @@
 [![PyPI](https://img.shields.io/pypi/v/mcpipe)](https://pypi.org/project/mcpipe/)
 [![Python](https://img.shields.io/pypi/pyversions/mcpipe)](https://pypi.org/project/mcpipe/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![CI](https://github.com/davidKristiansen/mcpipe/actions/workflows/ci.yml/badge.svg)](https://github.com/davidKristiansen/mcpipe/actions/workflows/ci.yml)
+[![CI](https://github.com/davetothek/mcpipe/actions/workflows/ci.yml/badge.svg)](https://github.com/davetothek/mcpipe/actions/workflows/ci.yml)
 ![coverage](https://img.shields.io/badge/coverage-47%25-yellow)
 
 <!--toc:start-->

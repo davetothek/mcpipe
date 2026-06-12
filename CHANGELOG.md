@@ -1,3 +1,9 @@
+## v0.2.0 (2026-06-12)
+
+### Feat
+
+- **fs**: add native before/after/context arguments to fs_grep and update feedback log
+
 ## v0.1.1 (2026-06-10)
 
 ## v0.1.0 (2026-06-10)

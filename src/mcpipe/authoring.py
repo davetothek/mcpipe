@@ -177,61 +177,58 @@ def kubectl_delete_pod(
 _TRANSFORM_GUIDE = """\
 # mcpipe Transform Authoring Guide
 
-## Transform file
-A transform is a single .py file in the transforms directory.
-Each file can register one or more transforms via the @transform decorator.
-
-## Imports
+## Minimum Viable Transform
 ```python
 from mcpipe import transform
-from typing import Annotated  # for parameter descriptions
-```
 
-## @transform decorator
-```python
 @transform("Short description of what the transform does")
-def my_transform(
-    lines: list[str],
-    param: Annotated[str, "Description"],
-) -> list[str]:
-    # lines in -> lines out, pure function
-    return [line for line in lines if some_condition(line)]
+def my_transform(lines: list[str]) -> list[str]:
+    return lines
 ```
 
-### Rules
-- First parameter MUST be `lines: list[str]`
-- MUST return `list[str]`
-- Must be a pure function — no side effects, no cache mutation
-- Additional parameters become transform-specific options
-- The function name becomes the transform name
+### Contract & Error Behavior
+- **Signature:** `def name(lines: list[str], ...) -> list[str]:`
+- **Input/Output:** Pure function. Takes a list of strings, returns a list of
+  strings. Never mutate the cache.
+- **Error Behavior:** Raise `ValueError` for bad parameters. Uncaught
+  exceptions will safely fail the transform pipeline and return an error
+  to the caller without breaking the server.
 
-## Example: complete transform
+## Viewing Full Help
+If this guide is truncated in your chat window, call the `view` tool on
+the handle returned by this command to read the full content.
+
+## Examples
+
+### 1. File-oriented (Filtering paths)
 ```python
-\"\"\"Custom transforms for sorting and deduplication.\"\"\"
 from mcpipe import transform
 from typing import Annotated
 
-@transform("Sort lines alphabetically")
-def sort(lines: list[str], reverse: bool = False) -> list[str]:
-    return sorted(lines, reverse=reverse)
+@transform("Filter lines to only keep absolute file paths")
+def absolute_paths(lines: list[str]) -> list[str]:
+    return [line for line in lines if line.strip().startswith("/")]
+```
 
-@transform("Remove duplicate lines preserving order")
-def dedup(lines: list[str]) -> list[str]:
-    seen: set[str] = set()
+### 2. Output parsing (JSON extraction)
+```python
+import json
+from mcpipe import transform
+from typing import Annotated
+
+@transform("Extract a specific key from JSON output lines")
+def extract_json_key(
+    lines: list[str],
+    key: Annotated[str, "The JSON key to extract"]
+) -> list[str]:
     result = []
     for line in lines:
-        if line not in seen:
-            seen.add(line)
-            result.append(line)
-    return result
-
-@transform("Keep only lines containing a JSON object")
-def json_only(lines: list[str]) -> list[str]:
-    result = []
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("{") and stripped.endswith("}"):
-            result.append(line)
+        try:
+            data = json.loads(line)
+            if key in data:
+                result.append(str(data[key]))
+        except json.JSONDecodeError:
+            continue
     return result
 ```
 """

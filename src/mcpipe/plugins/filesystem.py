@@ -187,17 +187,33 @@ def fs_grep(
     recursive: Annotated[bool, "Search directories recursively"] = True,
     ignore_case: Annotated[bool, "Case-insensitive search"] = False,
     max_count: Annotated[int, "Max matches per file (0 = unlimited)"] = 0,
+    before: Annotated[int, "Lines of context before match"] = 0,
+    after: Annotated[int, "Lines of context after match"] = 0,
+    context: Annotated[int, "Lines of context before and after match"] = 0,
 ) -> Cmd:
-    args = ["grep", "--color=never", "-n"]
+    args = ["env", "grep", "--color=never", "-n", "-H"]
     if recursive:
         args.append("-r")
     if ignore_case:
         args.append("-i")
     if max_count:
         args.extend(["-m", str(max_count)])
+    if before:
+        args.extend(["-B", str(before)])
+    if after:
+        args.extend(["-A", str(after)])
+    if context:
+        args.extend(["-C", str(context)])
     if include:
         args.extend(["--include", include])
     args.extend([pattern, _resolve(path).as_posix()])
+
+    if before or after or context:
+        import shlex
+        sed_cmd = "sed 's/^\\([^:]*\\)-\\([0-9][0-9]*\\)-/\\1:\\2:/'"
+        cmd_str = f"set -o pipefail; {shlex.join(args)} | {sed_cmd}"
+        return Cmd("bash", "-c", cmd_str)
+
     return Cmd(*args)
 
 

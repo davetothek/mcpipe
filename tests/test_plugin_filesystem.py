@@ -301,9 +301,11 @@ def test_fs_grep(fs_sandbox):
         max_count=5,
     )
     assert cmd.argv == [
+        "env",
         "grep",
         "--color=never",
         "-n",
+        "-H",
         "-r",
         "-i",
         "-m",
@@ -313,3 +315,23 @@ def test_fs_grep(fs_sandbox):
         "my-pattern",
         fs_sandbox.resolve().as_posix(),
     ]
+
+
+def test_fs_grep_context(fs_sandbox):
+    sandbox_dir = str(fs_sandbox)
+    cmd = fs_grep(
+        pattern="my-pattern",
+        path=sandbox_dir,
+        before=1,
+        after=2,
+        context=3,
+        recursive=False,
+    )
+    assert cmd.argv[0] == "bash"
+    assert cmd.argv[1] == "-c"
+
+    # Verify the shell script contains the pipefail, the args, and the sed replacement
+    script = cmd.argv[2]
+    assert script.startswith("set -o pipefail;")
+    assert "env grep --color=never -n -H -B 1 -A 2 -C 3 my-pattern" in script
+    assert "sed 's/^\\([^:]*\\)-\\([0-9][0-9]*\\)-/\\1:\\2:/'" in script
